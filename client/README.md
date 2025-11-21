@@ -1,52 +1,53 @@
-                                                             Visitor Tracking Client Application
+### 3. Visitor Tracking Frontend Client
 
-This directory contains the frontend client built with React and Vite, styled using Tailwind CSS. This application is responsible for the user interface, handling visitor registration, real-time status display, and triggering all necessary API calls to the backend server.
+This file needs significant updating to remove references to the separate `npm run dev` and `http://localhost:5173`.
 
-🚀 Local Development Setup
-To get the client application running locally:
+```markdown
+# Visitor Tracking Client Application
 
-1. Prerequisites
-Ensure the backend server is running first (npm run start in the /server directory) to avoid connectivity issues. The client is configured to expect the backend API at the address defined.
+This directory contains the frontend client built with **React and Vite**, styled using **Tailwind CSS**. This application is responsible for the user interface and handling all necessary API calls to the embedded backend server.
 
-2. Installation
-Navigate into this /client directory and install the necessary dependencies:
+When running as an Electron desktop application, this client is served as static files by the Express backend.
 
+***
+
+### 🚀 Local Development Setup
+
+#### 1. Prerequisites & Installation
+
+All client dependencies are installed via the root `npm install` command, but to ensure the `node_modules` are present in this subdirectory:
+
+```bash
 npm install
+2. Building for Electron
+The client must be compiled into static files (HTML, JS, CSS) before the Electron Main Process can serve it. This build must be run before starting the main application.
 
-3. Run the Application
-Start the Vite development server. This command will typically launch the application on http://localhost:5173.
+Bash
 
-npm run dev
+npm run build 
+# or
+yarn build
+The output will be placed in the /client/build folder.
 
+3. Running
+To run the client, navigate back to the root of the project and execute the Electron command, which automatically starts the server that hosts this client:
+
+Bash
+
+cd ..
+npm run electron-dev 
+# or
+npm start
 🛠️ Technology Stack
-This application is built upon a modern, powerful stack:
+React: Core library for the UI components.
 
-React: Core library for building the user interface components.
+Vite: Frontend tooling for fast building and development.
 
-Vite: Next-generation frontend tooling for fast development and bundling.
-
-Tailwind CSS: Utility-first CSS framework used for all styling and responsive design.
-
-📂 Key Component Structure
-
-The frontend application uses a component-based architecture for modularity.
-
-src/App.jsx: The main application file. It manages the primary application state, handles routing between views (e.g., the registration page and the current visitors dashboard), and renders the main components.
-
-src/components/VisitorDetailsForm.jsx: Manages the complex form logic for visitor registration, including handling dependent/contractor/professional fields, photo uploads, and submitting data to the /api/register endpoint.
-
-src/components/VisitorStatusList.jsx: Component responsible for fetching and displaying the real-time list of visitors currently on-site, typically using a polling mechanism or WebSockets (if implemented) to connect to the backend's data stream.
-
-Other Components: Contains modular UI elements like buttons, modals (for Ban/Unban confirmation), and search/filtering logic.
-
-🎨 Styling
-
-All user interface styling is handled using Tailwind CSS utility classes. This ensures consistency and responsive design across all devices. No custom CSS files are used, simplifying the styling workflow.
+Tailwind CSS: Utility-first CSS framework for styling and responsive design.
 
 📡 API Interaction
+All communication with the backend is handled asynchronously via standard HTTP requests (e.g., fetch or axios) to the embedded Express server at http://localhost:PORT. No changes to API interaction are required in the React code for Approach A.
 
-All communication with the backend is handled asynchronously within the components or custom React Hooks.
+The primary API endpoint for real-time data is GET /api/visitors.
 
-The primary API endpoint used for reading real-time data is GET /api/visitors.
-
-Sensitive actions like Ban/Unban utilize the confirmation modal (as seen in the screenshots) to pass the administrative password to the respective POST /api/ban/:id or POST /api/unban/:id endpoints.
+Sensitive actions like Ban/Unban utilize POST requests containing the administrative password.

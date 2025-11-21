@@ -1,137 +1,107 @@
+# Visitor Tracking and Management System - Electron Desktop Client
 
-                                                     Visitor Tracking and Management System
+This is a comprehensive desktop application designed to manage, log, and track visitors (including professionals, contractors, and guests with dependents) in real-time.
 
-This is a comprehensive, full-stack application designed to manage, log, and track visitors (including professionals, contractors, and guests with dependents) in real-time. The 
+This project packages the original Node.js/Express backend and the React/Vite frontend into a single, self-contained **Electron desktop application**.
 
-system provides secure sign-in/sign-out functionality, robust administrative controls (ban/unban), and data export capabilities.
+***
 
-The application is built using a modern Node.js/Express backend with SQLite for persistent data storage, and a React/Vite frontend utilizing Tailwind CSS for a responsive, modern interface.
+### 📜 Project Origin and Architecture
 
-🚀 Features
-Frontend (Client)
-Real-time Status Display: Shows a list of all visitors currently on-site, fetched in real-time from the database.
+This repository was created by **mirroring the full commit history** from the original web application repository.
 
-Visitor Registration: A guided form to register different visitor types:
+**Architecture:** This application utilizes **Electron's Approach A (Standalone Server)** model:
+* The **Electron Main Process** launches the embedded Node.js/Express backend.
+* The **Express Server** serves the compiled React UI via a local `http://localhost:3001` address.
+* All data is stored in the local, file-based **SQLite database (`visitors.db`)**.
 
-Professionals/Contractors: Capture company name, contact, and visit details.
+***
 
-Guests: Ability to add multiple dependents (full name and age).
+### 🚀 Features
 
-Includes mandatory photo upload for identification.
+**Frontend (Client)**
+* Real-time Status Display
+* Visitor Registration (Professionals, Contractors, Guests with dependents)
+* Mandatory photo upload/capture.
+* Visitor Management Screen for search and updates.
+* Administrative Actions (Secure Ban/Unban).
+* Data Export to CSV.
 
-Visitor Management Screen: Dedicated interface for searching, viewing, and updating individual visitor records.
+**Backend (Server)**
+* Node.js/Express API structure.
+* SQLite3 Database persistence.
+* Secure Admin functionality.
+* Dedicated REST API Endpoints.
 
-Administrative Actions: Secure Ban/Unban functionality verified by a server-side password (from .env).
+***
 
-Update Details: Edit contact information, unit visited, and purpose.
+### 🛠️ Tech Stack
 
-Data Export: Feature to export the entire history data for a specific visitor into a CSV file.
+**Client (Frontend)**
+* React, Vite, Tailwind CSS
 
-Backend (Server)
-Node.js/Express: A clean, componentized API structure (registration.js, visitors.js, login.js, etc.).
+**Server (Backend) & Desktop Runtime**
+* Node.js & Express, SQLite3
+* **Electron:** Desktop framework
+* DOTENV
 
-SQLite3 Database: Local, file-based persistence for visitor records and history.
+***
 
-Secure Ban/Unban: Administrative actions are protected by a shared secret password stored in the server's .env file.
+### 📁 Project Structure
 
-API Endpoints: Dedicated routes for registration, sign-in/out, status check, administrative updates, and history export.
+The repository maintains its mono-repo structure, now integrated with Electron files:
 
-🛠️ Tech Stack
-Client (Frontend)
-React: Frontend library for building the user interface.
+* `/client/`                  (React Frontend - Source Code)
+* `/server/`                  (Node.js/Express Backend - Server Logic)
+* `main.js`                   (Electron Main Process Entry Point)
+* `preload.js`                (Electron Security Bridge)
+* `package.json`              (Root dependencies and Electron config)
+* `/client/build`             (Where the compiled React files go)
+* `/server/Uploads`           (Folder for image storage)
 
-Vite: Build tool for fast development and bundling.
+***
 
-Tailwind CSS: Utility-first CSS framework for styling and responsive design.
+### ⚙️ Setup and Installation (For Developers)
 
-Server (Backend)
-Node.js & Express: Runtime environment and web framework for the REST API.
+Follow these steps to set up and run the application locally for development.
 
-SQLite3: Database for persistent storage.
+#### 1. Prerequisites
 
-DOTENV: For environment variable management.
+You must have **Node.js (LTS)** and **npm/Yarn** installed.
 
-Cross-Origin Resource Sharing (CORS): Configured for development communication between client and server.
+#### 2. Install Root Dependencies
 
-📁 Project Structure
-The repository is structured as a mono-repo containing both the client (React) and server (Node.js) applications:
+Run the installation command in the **root directory** of the project:
 
-/visitor-tracker-app
-├── /client/                  (React Frontend - Vite/Tailwind)
-│   ├── /src/
-│   │   ├── /components/      (e.g., VisitorDetailsForm.jsx, RegistrationForm.jsx, index.css, main.jsx)
-│   │   └── App.jsx           (Main application component)
-│   ├── package.json
-├── /server/                  (Node.js/Express Backend - SQLite)
-│   ├── /db/                  (Database initialization scripts/files)
-│   │   └── visitors.db       (The SQLite database file)
-|   |---/auth/               (Authentication file, registration.js)   
-│   ├── /routes/              (Modular Express router files, e.g., visitors.js)
-│   ├── server.js             (Main Express application file)
-│   ├── package.json
-|   |--- Uploads                (Folder for img storage) 
-│   ├── .env.example          (Template for environment variables)
-│   └── README.md             (API documentation and server setup)
-├── .gitignore
-└── README.md                 (Project Overview)
-
-⚙️ Setup and Installation
-Follow these steps to get the application running locally.
-
-1. Prerequisites
-You must have the following installed:
-
-Node.js (LTS version recommended)
-
-npm or Yarn
-
-2. Backend Setup (/server)
-Navigate to the server directory:
-
-cd server
-
-Install dependencies:
-
-npm install
-# or
+```bash
+npm install 
+# or 
 yarn install
 
-Configure Environment Variables:
 
-Create a file named .env inside the /server directory.
 
-Copy the content from .env.example into your new .env file and fill in the values.
+3. Build the React Client
+Navigate to the client directory and build the production-ready React assets. This step is mandatory as Electron needs the compiled files.
 
-.env Example:
+Bash
 
-MASTER_PASSWORD=admin_password_ban
-MASTER_PASSWORD2=admin_password_dat_history
-# The FIRST password is used to authorize ban/unban actions
-# THE SECOND password is used to authorize accessing the data history
+cd client
+npm install
+npm run build 
+# or
+yarn build
+4. Configure Environment Variables
+Create a file named .env inside the /server directory. Copy the content from .env.example and fill in the values.
 
-Run the backend server:
+Note: In the Electron environment, the PORT variable should typically be set to a static port like 3001.
 
+5. Run the Electron Application
+Navigate back to the root directory and run the Electron development script:
+
+Bash
+
+cd ..
+npm run electron-dev 
+# or simply:
 npm start
-# or
-yarn start
-
-The server will start on the port specified in your .env file (e.g., http://localhost:3001).
-
-3. Frontend Setup (/client)
-Navigate to the client directory:
-
-cd ../client
-
-Install dependencies:
-
-npm install
-# or
-yarn install
-
-Start the React development server:
-
-npm run dev
-# or
-yarn dev
-
-The client application will typically open at http://localhost:5173/ (Vite's default port).|
+The Electron window will launch, automatically starting the Node.js server and loading the UI from localhost.

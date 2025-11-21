@@ -168,6 +168,4 @@ app.use("/", createSearchVisitorsRouter(db));
 app.use("/", createMissedVisitRouter(db)); 
 app.use("/", createHistoryRouter(db));
 
-app.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
-});
+module.exports = app;
