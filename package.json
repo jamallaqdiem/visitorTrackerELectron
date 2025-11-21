@@ -1,5 +1,26 @@
 {
+  "name": "visitor-tracker-electron",
+  "version": "1.0.0",
+  "description": "Electron desktop wrapper for the Visitor Tracking and Management System.",
+  "main": "main.js",
+  "scripts": {
+    "start": "npm run electron-dev",
+    "electron-dev": "electron .",
+    "build:client": "cd client && npm run build",
+    "rebuild:electron": "electron-rebuild -f -w",
+    "package:win": "electron-builder --win",
+    "package:linux": "electron-builder --linux"
+  },
+  "keywords": [
+    "electron",
+    "react",
+    "node"
+  ],
+  "author": "",
+  "license": "ISC",
   "devDependencies": {
-    "vite-plugin-mkcert": "^1.17.8"
+    "electron": "^39.2.3",
+    "electron-builder": "^24.0.0",
+    "electron-rebuild": "^3.0.0"
   }
 }
