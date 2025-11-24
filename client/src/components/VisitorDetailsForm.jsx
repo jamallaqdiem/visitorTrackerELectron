@@ -1,5 +1,5 @@
 import React from "react";
-
+const API_BASE_URL = "http://localhost:3001";
 const VisitorDetailsForm = ({
   selectedVisitor,
   editFormData,
@@ -18,7 +18,6 @@ const VisitorDetailsForm = ({
   handleRecordMissedVisitClick,
 }) => {
   if (!selectedVisitor) return null;
- 
 
   const handleEditChange = (e) => {
     const { name, value } = e.target;
@@ -66,7 +65,7 @@ const VisitorDetailsForm = ({
   };
 
   const dependents = editFormData.additional_dependents || [];
-const hasName = (dep) => dep.full_name && dep.full_name.trim() !== "";
+  const hasName = (dep) => dep.full_name && dep.full_name.trim() !== "";
   const hasValidAge = (dep) => Number(dep.age) > 0;
 
   const validDependents = dependents.filter(
@@ -77,22 +76,27 @@ const hasName = (dep) => dep.full_name && dep.full_name.trim() !== "";
     const agePresent = hasValidAge(dep);
 
     if (namePresent && !agePresent) return true;
-    if (!namePresent && agePresent) return true; 
+    if (!namePresent && agePresent) return true;
     return false;
   });
- const isBanned = selectedVisitor.is_banned === 1;
+  const isBanned = selectedVisitor.is_banned === 1;
   const isAgreementRequired = [
     "contractor",
     "visitor",
     "professional",
   ].includes(editFormData.type);
-  
-  const isAdultNotAcknowledged = isAgreementRequired && !isAgreementCheckedAdult;
+
+  const isAdultNotAcknowledged =
+    isAgreementRequired && !isAgreementCheckedAdult;
   const isChildAgreementRequired =
     validDependents.length > 0 && editFormData.type === "visitor";
   const isChildNotAcknowledged =
     isChildAgreementRequired && !isAgreementCheckedChild;
-  const shouldDisable = isBanned || isAdultNotAcknowledged || isChildNotAcknowledged || isDependentDataIncomplete;
+  const shouldDisable =
+    isBanned ||
+    isAdultNotAcknowledged ||
+    isChildNotAcknowledged ||
+    isDependentDataIncomplete;
 
   return (
     <div className="w-full max-w-4xl mx-auto bg-white p-6 md:p-10 rounded-xl shadow-2xl border border-blue-100">
@@ -106,7 +110,11 @@ const hasName = (dep) => dep.full_name && dep.full_name.trim() !== "";
           <div className="flex flex-col items-center w-full mt-6">
             <div className="w-60 h-60 rounded-lg overflow-hidden bg-gray-200 flex items-center justify-center border-4 border-gray-300 shadow-inner">
               <img
-                src={selectedVisitor.photo_path || "placeholder"}
+                src={
+                  selectedVisitor.photo
+                    ? `${API_BASE_URL}${selectedVisitor.photo}` // Re-create the full URL here
+                    : "https://placehold.co/160x160/ccc/666?text=No+Photo"
+                }
                 alt="Visitor Photo"
                 className="w-full h-full object-cover"
                 onError={(e) => {
@@ -294,20 +302,21 @@ const hasName = (dep) => dep.full_name && dep.full_name.trim() !== "";
           {message}
         </div>
       )}
-    {isChildAgreementRequired && (
-      <div className="mt-6">
-        <label className="flex items-center space-x-3 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={isAgreementCheckedChild}
-            onChange={(e) => setIsAgreementCheckedChild(e.target.checked)}
-            className="form-checkbox h-5 w-5 text-purple-600 rounded border-gray-300 focus:ring-purple-500"
-          />
-          <span className="text-base font-medium  text-red-500">
-            * Child Agreement & Disclaimer Paper form signed and kept (Staff Check)
-          </span>
-        </label>
-      </div>
+      {isChildAgreementRequired && (
+        <div className="mt-6">
+          <label className="flex items-center space-x-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={isAgreementCheckedChild}
+              onChange={(e) => setIsAgreementCheckedChild(e.target.checked)}
+              className="form-checkbox h-5 w-5 text-purple-600 rounded border-gray-300 focus:ring-purple-500"
+            />
+            <span className="text-base font-medium  text-red-500">
+              * Child Agreement & Disclaimer Paper form signed and kept (Staff
+              Check)
+            </span>
+          </label>
+        </div>
       )}
 
       {["contractor"].includes(editFormData.type) && (
@@ -336,7 +345,8 @@ const hasName = (dep) => dep.full_name && dep.full_name.trim() !== "";
               className="form-checkbox h-5 w-5 text-purple-600 rounded border-gray-300 focus:ring-purple-500"
             />
             <span className="text-base font-medium  text-red-500">
-            * Visitor Agreement & Disclaimer Paper form signed and kept (Staff Check)
+              * Visitor Agreement & Disclaimer Paper form signed and kept (Staff
+              Check)
             </span>
           </label>
         </div>

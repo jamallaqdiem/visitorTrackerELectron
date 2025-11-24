@@ -1,4 +1,3 @@
-// /server/startServer.js
 const path = require('path');
 // Import dotenv to load the PORT variable from the /server/.env file
 require('dotenv').config({ path: path.join(__dirname, '.env') }); 
@@ -11,8 +10,9 @@ const PORT = process.env.PORT || 3001; // Use the port defined in .env or defaul
  * Starts the Express server and returns the port it is listening on.
  * @returns {Promise<number>} The port number.
  */
-function startServer() {
+function startServer(userDataPath) {
   return new Promise((resolve, reject) => {
+    app.set('userDataPath', userDataPath);
     try {
       // Use the imported app instance to start listening
       const server = app.listen(PORT, () => {

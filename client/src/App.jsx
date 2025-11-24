@@ -5,6 +5,7 @@ import VisitorRegistrationForm from "./components/VisitorRegistrationForm";
 import PasswordModal from "./components/PasswordModal";
 import RecordMissedVisitModal from "./components/RecordMissedVisitModal";
 import HistoryDashboard from "./components/VisitHistory";
+import SalvationArmyLogo from '../Salvation-Army-logo.png';
 
 const API_BASE_URL = "http://localhost:3001";
 
@@ -861,7 +862,7 @@ function App() {
       {/* Header */}
       <div className="flex flex-col items-center w-full mb-8 relative">
         <img
-      src="Salvation-Army-logo.png"
+      src={SalvationArmyLogo}
       alt="The Salvation Army Red Shield Logo"
       className="absolute left-0 top-0 w-28 h-28 object-contain print-show-logo"
       // Fallback in case the image path is broken

@@ -1,13 +1,13 @@
-// main.js
-const { app, BrowserWindow } = require('electron');
+
 const path = require('path');
-const { startServer } = require('./server/startServer'); // Import the new module
-
+const { startServer } = require('./server/startServer');
+const { app, BrowserWindow, ipcMain } = require('electron'); 
 let mainWindow;
-
+let userDataPath; // path to store .db and uplaods folder outside of .exe 
 const createWindow = async () => {
+  userDataPath = app.getPath('userData');
   // 1. START THE NODE.JS SERVER and WAIT for the port
-  const port = await startServer(); 
+  const port = await startServer(userDataPath); 
 
   // 2. Create the Browser Window
   mainWindow = new BrowserWindow({
@@ -17,7 +17,7 @@ const createWindow = async () => {
       // Standard security settings for loading an external (localhost) resource
       nodeIntegration: false,
       contextIsolation: true, 
-      preload: path.join(__dirname, 'preload.js'), // Keep your preload script
+      preload: path.join(__dirname, 'preload.js'), 
     },
   });
 
@@ -48,4 +48,10 @@ app.on('activate', () => {
   if (mainWindow === null) {
     createWindow();
   }
+});
+
+// --- IPC HANDLERS ---
+// Listener for the 'app:close' signal sent from the preload script/renderer
+ipcMain.on('app:close', () => {
+  app.quit();
 });

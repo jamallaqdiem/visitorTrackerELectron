@@ -60,9 +60,7 @@ function createVisitorsRouter(db) {
       }
       const resultsWithUrls = rows.map((row) => ({
         ...row,
-        photo: row.photo_path
-          ? `${req.protocol}://${req.get("host")}/${row.photo_path}`
-          : null,
+        photo: row.photo_path || null,
       }));
       res.json(resultsWithUrls);
     });

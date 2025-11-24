@@ -27,8 +27,8 @@ function createRegistrationRouter(db, upload) {
       additional_dependents,
     } = req.body;
     const photo_path = req.file
-      ? path.join("uploads", path.basename(req.file.path))
-      : null;
+      ? `/uploads/${req.file.filename}` //  unique filename from multer, prefixed with the URL segment '/uploads'
+  : null;
     // SQL to check if a visitor with the same full name exists
     const checkSql = `SELECT id FROM visitors WHERE first_name = ? AND last_name = ?`;
 

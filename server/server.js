@@ -1,4 +1,4 @@
-require('dotenv').config();
+require("dotenv").config();
 const express = require("express");
 const sqlite3 = require("sqlite3").verbose();
 const cors = require("cors");
@@ -8,6 +8,7 @@ const fs = require("fs");
 const multer = require("multer");
 const app = express();
 const PORT = 3001;
+const CLIENT_BUILD_PATH = path.join(__dirname, "..", "client", "dist");
 
 const runDataComplianceCleanup = require("./routes/clean_data");
 const createRegistrationRouter = require("./auth/registration");
@@ -19,54 +20,14 @@ const createBanVisitorRouter = require("./routes/ban");
 const createUnbanVisitorRouter = require("./routes/unban");
 const createSearchVisitorsRouter = require("./routes/search_visitors");
 const createMissedVisitRouter = require("./routes/record_missed_visit");
-const createHistoryRouter = require("./routes/display_history"); 
+const createHistoryRouter = require("./routes/display_history");
 
-// Middleware setup
-app.use(cors());
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+// Global variables to hold initialized resources (db and upload)
+let db = null;
+let upload = null;
+let UPLOADS_DIR_PATH = null; // Store the persistent uploads path here
 
-// Ensure the uploads directory exists
-const uploadsDir = "uploads";
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir);
-}
-
-// Set up multer for file uploads
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, uploadsDir);
-  },
-  filename: function (req, file, cb) {
-    cb(
-      null,
-      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
-    );
-  },
-});
-const upload = multer({
-  storage: storage,
-  limits: {
-    fileSize: 20 * 1024 * 1024, // 20Mb size limit
-  },
-  fileFilter: (req, file, cb) => {
-    if (
-      file.mimetype === "image/jpeg" ||
-      file.mimetype === "image/png" ||
-      file.mimetype === "image/gif"
-    ) {
-      cb(null, true); // accept
-    } else {
-      cb(
-        new Error("Invalid file type, only JPEG, PNG, or GIF is allowed!"),
-        false
-      ); // reject
-    }
-  },
-});
-
-// Define SQL commands 
+// Define SQL commands
 const visitorsSql = `CREATE TABLE IF NOT EXISTS visitors (
   id INTEGER PRIMARY KEY,
   first_name TEXT NOT NULL,
@@ -108,64 +69,151 @@ const auditLogsSql = `CREATE TABLE IF NOT EXISTS audit_logs (
   visits_deleted INTEGER,
   dependents_deleted INTEGER
 )`;
+// --- End SQL Commands ---
 
-// Connect to SQLite database
-const db = new sqlite3.Database("database.db", (err) => {
-  if (err) {
-    console.error(err.message);
-  } else {
-    console.log("Connected to the database.");
+// --- INITIALIZATION FUNCTION ---
+/**
+ * Initializes the database and Multer instance using the persistent userDataPath.
+ * This is called from startServer.js after the path has been set.
+ */
+const initializeServer = () => {
+  // Retrieve the persistent data path set by startServer.js
+  const userDataPath =
+    app.get("userDataPath") || path.join(__dirname, "..", "..", "data"); // Define Paths
+  const DB_FILE_PATH = path.join(userDataPath, "database.db");
+  UPLOADS_DIR_PATH = path.join(userDataPath, "uploads"); // Set the global path variable // Ensure the uploads directory exists
+
+  if (!fs.existsSync(UPLOADS_DIR_PATH)) {
+    fs.mkdirSync(UPLOADS_DIR_PATH, { recursive: true });
+  } // Set up multer for file uploads
+
+  const storage = multer.diskStorage({
+    destination: function (req, file, cb) {
+      cb(null, UPLOADS_DIR_PATH);
+    },
+    filename: function (req, file, cb) {
+      cb(
+        null,
+        file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+      );
+    },
+  }); // Store the initialized multer instance
+
+  upload = multer({
+    storage: storage,
+    limits: { fileSize: 20 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+      if (["image/jpeg", "image/png", "image/gif"].includes(file.mimetype)) {
+        cb(null, true);
+      } else {
+        cb(
+          new Error("Invalid file type, only JPEG, PNG, or GIF is allowed!"),
+          false
+        );
+      }
+    },
+  }); // Connect to SQLite database
+
+  db = new sqlite3.Database(DB_FILE_PATH, (err) => {
+    if (err) {
+      return console.error("Database connection error (Fatal):", err.message);
+    }
+    console.log("Connected to the database at:", DB_FILE_PATH);
 
     db.serialize(() => {
-      // 1. Create Visitors table
+      // Create all tables
       db.run(visitorsSql, (err) => {
-        if (err) {
+        if (err)
           return console.error("Visitors Table Error (Fatal):", err.message);
-        }
-
-        // 2. Create Visits table
         db.run(visitsSql, (err) => {
-          if (err) {
+          if (err)
             return console.error("Visits Table Error (Fatal):", err.message);
-          }
-
-          // 3. Create Dependents table
           db.run(dependentsSql, (err) => {
-            if (err) {
+            if (err)
               return console.error(
                 "Dependents Table Error (Fatal):",
                 err.message
               );
-            }
-
-            // 4. Create Audit Logs table
             db.run(auditLogsSql, (err) => {
-              if (err) {
+              if (err)
                 return console.error(
                   "Audit Logs Table Error (Fatal):",
                   err.message
-                );
-              }
-              // Running cleanup job.
+                ); // Running cleanup job.
               runDataComplianceCleanup(db);
             });
           });
         });
       });
     });
-  }
+  });
+};
+// --- END INITIALIZATION FUNCTION ---
+
+// CALL THE INITIALIZATION FUNCTION
+initializeServer();
+
+// --- Express Middleware and Routing ---
+
+// Middleware setup
+app.use(cors());
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
+
+app.get("/test-uploads-path", (req, res) => {
+  // This will show us the physical path Express is trying to use
+  res.send({
+    UPLOADS_DIR_PATH: UPLOADS_DIR_PATH,
+    message: "Ensure this path is where your images are stored.",
+  });
 });
 
-// Router usage
-app.use("/", createRegistrationRouter(db,upload));
+// Router usage (db and upload are now correctly initialized global variables)
+app.use("/", createRegistrationRouter(db, upload));
 app.use("/", createVisitorsRouter(db));
 app.use("/", createLoginRouter(db));
 app.use("/", createUpdateVisitorRouter(db));
 app.use("/", createLogoutRouter(db));
 app.use("/", createBanVisitorRouter(db));
 app.use("/", createUnbanVisitorRouter(db));
-app.use("/", createSearchVisitorsRouter(db)); 
-app.use("/", createMissedVisitRouter(db)); 
+app.use("/", createSearchVisitorsRouter(db));
+app.use("/", createMissedVisitRouter(db));
 app.use("/", createHistoryRouter(db));
+
+app.use("/uploads", (req, res, next) => {
+    const extension = path.extname(req.url).toLowerCase();
+    
+    // Set appropriate MIME types for common image files
+    switch (extension) {
+        case '.png':
+            res.setHeader('Content-Type', 'image/png');
+            break;
+        case '.jpg':
+        case '.jpeg':
+            res.setHeader('Content-Type', 'image/jpeg');
+            break;
+        case '.gif':
+            res.setHeader('Content-Type', 'image/gif');
+            break;
+        default:
+            // Let the static handler handle other files or fail if it's not an image
+            break;
+    }
+    next();
+});
+
+// Register static middleware  AFTER UPLOADS_DIR_PATH is set
+app.use("/uploads", express.static(path.resolve(UPLOADS_DIR_PATH)));
+
+// Serve the static files from the build path (e.g., JS, CSS)
+app.use(express.static(CLIENT_BUILD_PATH));
+
+app.get("*", (req, res, next) => {
+  // Excluding API routes from this catch-all
+  if (req.url.startsWith("/api/")) {
+    return next();
+  }
+  res.sendFile(path.join(CLIENT_BUILD_PATH));
+});
 
 module.exports = app;
