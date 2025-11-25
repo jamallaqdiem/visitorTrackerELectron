@@ -111,8 +111,8 @@ const VisitorDetailsForm = ({
             <div className="w-60 h-60 rounded-lg overflow-hidden bg-gray-200 flex items-center justify-center border-4 border-gray-300 shadow-inner">
               <img
                 src={
-                  selectedVisitor.photo
-                    ? `${API_BASE_URL}${selectedVisitor.photo}` // Re-create the full URL here
+                  selectedVisitor.photo_path
+                    ? `${API_BASE_URL}${selectedVisitor.photo_path}` // Re-create the full URL here
                     : "https://placehold.co/160x160/ccc/666?text=No+Photo"
                 }
                 alt="Visitor Photo"

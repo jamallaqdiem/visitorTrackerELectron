@@ -106,7 +106,7 @@ function createUpdateVisitorRouter(db) {
                   .then(() => {
                     db.run("COMMIT;");
                     res.status(201).json({
-                      message: "Visitor Updated Successfully!",
+                      message: "Visitor Updated and Signed in Successfully!",
                       id: newVisitId,
                     });
                   })

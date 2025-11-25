@@ -160,14 +160,6 @@ app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
-app.get("/test-uploads-path", (req, res) => {
-  // This will show us the physical path Express is trying to use
-  res.send({
-    UPLOADS_DIR_PATH: UPLOADS_DIR_PATH,
-    message: "Ensure this path is where your images are stored.",
-  });
-});
-
 // Router usage (db and upload are now correctly initialized global variables)
 app.use("/", createRegistrationRouter(db, upload));
 app.use("/", createVisitorsRouter(db));
@@ -201,7 +193,6 @@ app.use("/uploads", (req, res, next) => {
     }
     next();
 });
-
 // Register static middleware  AFTER UPLOADS_DIR_PATH is set
 app.use("/uploads", express.static(path.resolve(UPLOADS_DIR_PATH)));
 
