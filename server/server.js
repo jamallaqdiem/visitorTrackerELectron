@@ -9,6 +9,11 @@ const multer = require("multer");
 const app = express();
 const PORT = 3001;
 const CLIENT_BUILD_PATH = path.join(__dirname, "..", "client", "dist");
+const { 
+  checkDatabaseIntegrity, 
+  restoreFromBackup, 
+  createBackup 
+} = require("./db_management");
 
 const runDataComplianceCleanup = require("./routes/clean_data");
 const createRegistrationRouter = require("./auth/registration");
@@ -76,7 +81,7 @@ const auditLogsSql = `CREATE TABLE IF NOT EXISTS audit_logs (
  * Initializes the database and Multer instance using the persistent userDataPath.
  * This is called from startServer.js after the path has been set.
  */
-const initializeServer = () => {
+const initializeServer = async() => {
   // Retrieve the persistent data path set by startServer.js
   const userDataPath =
     app.get("userDataPath") || path.join(__dirname, "..", "..", "data"); // Define Paths
@@ -85,8 +90,43 @@ const initializeServer = () => {
 
   if (!fs.existsSync(UPLOADS_DIR_PATH)) {
     fs.mkdirSync(UPLOADS_DIR_PATH, { recursive: true });
-  } // Set up multer for file uploads
+  } 
 
+  // ---  AUTOMATED RECOVERY LOGIC (STEP 1: CHECK & RESTORE) ---
+  let isDatabaseClean = await checkDatabaseIntegrity(DB_FILE_PATH);
+  const maxRestoreAttempts = 2; // Allow one restore attempt
+  let attempt = 1;
+  
+  while (!isDatabaseClean && attempt <= maxRestoreAttempts) {
+      console.warn(` Database check failed (Attempt ${attempt}). Attempting automatic recovery...`);
+      
+      const restoreSuccess = restoreFromBackup(userDataPath);
+      
+      if (restoreSuccess) {
+          // Check the integrity of the restored file
+          console.log(`Restoration complete. Checking integrity of the new file...`);
+          isDatabaseClean = await checkDatabaseIntegrity(DB_FILE_PATH);
+          
+          if (isDatabaseClean) {
+              console.log(" Database successfully recovered and integrity check passed.");
+              break; // Exit the loop
+          }
+      } else if (attempt === 1) {
+          // No backups found, proceed to connection which will create a new DB
+          console.error("No valid backups found. A new database file will be created on connection.");
+          break; 
+      }
+
+      attempt++;
+  }
+  
+  if (!isDatabaseClean && attempt > maxRestoreAttempts) {
+      // If we failed after all attempts (the backup itself was corrupt)
+      console.error("CRITICAL ERROR: Database and all backups appear corrupt or unusable. HALTING SERVER STARTUP.");
+      return; // Halt server initialization
+  }
+
+  // Set up multer for file uploads
   const storage = multer.diskStorage({
     destination: function (req, file, cb) {
       cb(null, UPLOADS_DIR_PATH);
@@ -119,6 +159,9 @@ const initializeServer = () => {
       return console.error("Database connection error (Fatal):", err.message);
     }
     console.log("Connected to the database at:", DB_FILE_PATH);
+    
+    // 🔑 AUTOMATED BACKUP LOGIC (STEP 2: CREATE DAILY BACKUP)
+    createBackup(DB_FILE_PATH, userDataPath)
 
     db.serialize(() => {
       // Create all tables
