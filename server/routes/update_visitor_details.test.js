@@ -88,7 +88,7 @@ describe('POST /update-visitor-details', () => {
       .send(updateData);
 
     expect(response.status).toBe(201);
-    expect(response.body).toHaveProperty('message', 'Visitor Updated Successfully!');
+    expect(response.body).toHaveProperty('message', 'Visitor Updated and Signed in Successfully!');
     expect(response.body).toHaveProperty('id');
   });
 
