@@ -1,57 +1,87 @@
-
+const { app, BrowserWindow, ipcMain, dialog } = require('electron'); 
+const createLogger = require('./server/logger');
 const path = require('path');
+const fs = require('fs'); // Added for reading config
+const Sentry = require("@sentry/electron/main");// Electron SDK
 const { startServer } = require('./server/startServer');
-const { app, BrowserWindow, ipcMain } = require('electron'); 
+
 let mainWindow;
-let userDataPath; // path to store .db and uplaods folder outside of .exe 
-const createWindow = async () => {
-  userDataPath = app.getPath('userData');
-  // 1. START THE NODE.JS SERVER and WAIT for the port
-  const port = await startServer(userDataPath); 
+let userDataPath; 
 
-  // 2. Create the Browser Window
-  mainWindow = new BrowserWindow({
-    width: 1024,
-    height: 768,
-    webPreferences: {
-      // Standard security settings for loading an external (localhost) resource
-      nodeIntegration: false,
-      contextIsolation: true, 
-      preload: path.join(__dirname, 'preload.js'), 
-    },
-  });
+// 1. EARLY INITIALIZATION (Sentry & Config)
+userDataPath = app.getPath('userData');
+const configPath = path.join(userDataPath, "config.json");
 
-  // 3. LOAD THE WINDOW from the server's local address
-  mainWindow.loadURL(`http://localhost:${port}`);
-
-  // Open the DevTools only in development 
-  if (!app.isPackaged) {
-    mainWindow.webContents.openDevTools();
+try {
+  if (fs.existsSync(configPath)) {
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    if (config.SENTRY_DSN) {
+      Sentry.init({ dsn: config.SENTRY_DSN });
+    }
   }
+} catch (err) {
+  console.error("Main Process: Could not initialize Sentry", err);
+}
 
-  // Handle closing event
-  mainWindow.on('closed', () => {
-    mainWindow = null;
-  });
+app.disableHardwareAcceleration();
+
+const createWindow = async () => {
+  const logDir = path.join(userDataPath, 'logs');
+  const logger = createLogger(logDir);
+
+  try {
+    logger.info('[Main Process] Attempting to start backend server...');
+    
+    // This calls startServer which returns the port from config.json
+    const port = await startServer(userDataPath); 
+    
+    logger.info(`[Main Process] Backend ready on port ${port}. Creating window...`);
+
+    mainWindow = new BrowserWindow({
+      width: 1024,
+      height: 768,
+      backgroundColor: '#ffffff',
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true, 
+        preload: path.join(__dirname, 'preload.js'), 
+      },
+    });
+
+    // Load URL using the dynamic port
+    mainWindow.loadURL(`http://localhost:${port}`);
+
+    mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+      logger.error(`[Main Process] Failed to load UI: ${errorDescription} (${errorCode})`);
+    });
+
+    if (!app.isPackaged) {
+      mainWindow.webContents.openDevTools();
+    }
+
+    mainWindow.on('closed', () => {
+      mainWindow = null;
+    });
+
+  } catch (error) {
+    Sentry.captureException(error); // Send startup errors to Sentry
+    logger.error('[Main Process] FATAL ERROR during startup:', error);
+    
+    dialog.showErrorBox(
+      'Application Startup Error',
+      `The server failed to start.\n\nError: ${error.message}`
+    );
+    app.quit();
+  }
 };
 
-// Electron Lifecycle Handlers
+// Lifecycle Handlers
 app.whenReady().then(createWindow);
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
+  if (process.platform !== 'darwin') app.quit();
 });
 
-app.on('activate', () => {
-  if (mainWindow === null) {
-    createWindow();
-  }
-});
-
-// --- IPC HANDLERS ---
-// Listener for the 'app:close' signal sent from the preload script/renderer
 ipcMain.on('app:close', () => {
   app.quit();
 });

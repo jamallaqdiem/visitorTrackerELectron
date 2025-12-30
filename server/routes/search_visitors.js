@@ -1,36 +1,21 @@
 const express = require("express");
 
-/**
- * Creates and configures a router for handling visitor search.
- *
- * @param {object} db - The SQLite database instance.
- * @returns {express.Router} - An Express router with the search endpoint.
- */
-function createSearchVisitorsRouter(db) {
+module.exports = (db, logger) => {
   const router = express.Router();
 
-  // Endpoint to search for visitors by name
   router.get("/visitor-search", (req, res) => {
     const searchTerm = req.query.name;
     if (!searchTerm) {
+      logger?.warn("Search Attempt: Missing name parameter.");
       return res.status(400).json({ message: "Search term 'name' is required." });
     }
 
     const searchTerms = searchTerm.split(' ');
     let query = `
       SELECT
-        T1.id,
-        T1.first_name,
-        T1.last_name,
-        T1.photo_path,
-        T1.is_banned,
-        T2.known_as,
-        T2.address,
-        T2.phone_number,
-        T2.unit,
-        T2.reason_for_visit,
-        T2.company_name,
-        T2.type,
+        T1.id, T1.first_name, T1.last_name, T1.photo_path, T1.is_banned,
+        T2.known_as, T2.address, T2.phone_number, T2.unit,
+        T2.reason_for_visit, T2.company_name, T2.type,
         T2.mandatory_acknowledgment_taken,
         GROUP_CONCAT(json_object('full_name', T3.full_name, 'age', T3.age), ',') AS dependents_json
       FROM visitors AS T1
@@ -41,7 +26,6 @@ function createSearchVisitorsRouter(db) {
       LEFT JOIN dependents AS T3 ON T2.id = T3.visit_id
       WHERE `;
     
-    // Add conditions for each search term
     const likeTerms = [];
     const conditions = searchTerms.map(term => {
       likeTerms.push(`%${term}%`);
@@ -53,7 +37,7 @@ function createSearchVisitorsRouter(db) {
 
     db.all(query, likeTerms.flatMap(term => [term, term]), (err, rows) => {
       if (err) {
-        console.error("SQL Error in visitor-search:", err.message);
+        logger?.error(`Search SQL Error: ${err.message}`);
         return res.status(500).json({ error: err.message });
       }
       
@@ -61,9 +45,10 @@ function createSearchVisitorsRouter(db) {
         let dependentsData = [];
         if (row.dependents_json) {
           try {
+            // SQLite GROUP_CONCAT with json_object needs to be wrapped in [ ] to be valid JSON
             dependentsData = JSON.parse(`[${row.dependents_json}]`);
           } catch (parseErr) {
-            console.error("Failed to parse dependents JSON:", parseErr.message);
+            logger?.error("Failed to parse dependents JSON");
           }
         }
         
@@ -75,11 +60,11 @@ function createSearchVisitorsRouter(db) {
           dependents: dependentsData,
         };
       });
+
+      logger?.info(`Search Success: Found ${resultsWithUrls.length} results for "${searchTerm}"`);
       res.status(200).json(resultsWithUrls);
     });
   });
 
   return router;
-}
-
-module.exports = createSearchVisitorsRouter;
+};

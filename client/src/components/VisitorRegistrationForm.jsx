@@ -1,6 +1,7 @@
-import React, { useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { CameraIcon, PersonIcon, PhoneIcon } from "./IconComponents";
 import Webcam from "react-webcam";
+import Tooltip from "./Tooltip";
 
 const videoConstraints = {
   width: 300,
@@ -55,7 +56,7 @@ const VisitorRegistrationForm = ({
     }
     return new File([u8arr], filename, { type: mime });
   };
-  
+
   //handle the actual file selection for "Upload File"
   const handleFileClick = () => {
     setCaptureMode(null);
@@ -219,12 +220,14 @@ const VisitorRegistrationForm = ({
         </div>
         {/* Photo and Dependents Section */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4 border-t">
-          {/* Photo Upload */}         {" "}
+          {/* Photo Upload */}{" "}
           <div className="md:col-span-1 flex flex-col items-center space-y-3">
-                       {" "}
-            <label className="text-sm font-medium text-gray-700">
-                 Visitor Photo ID
-            </label>
+            {" "}
+            <Tooltip text="Take a photo of the visitor's face (ID). If they are a contractor, you can also take a photo of their ID badge.">
+              <label className="text-sm font-medium text-gray-700">
+                Visitor PhotoID
+              </label>
+            </Tooltip>
             <div className="w-32 h-32 rounded-lg overflow-hidden bg-gray-200 flex items-center justify-center border-2 border-gray-300 shadow-inner">
               {capturedImage || photoPreviewUrl ? (
                 <img
@@ -342,8 +345,7 @@ const VisitorRegistrationForm = ({
                   </button>
                 </div>
               </div>
-            )}
-               {" "}
+            )}{" "}
           </div>
           {/* Additional Dependents */}
           {["visitor"].includes(formData.visitorType) && (
@@ -412,52 +414,60 @@ const VisitorRegistrationForm = ({
         {["visitor"].includes(formData.visitorType) &&
           dependents.length > 0 && (
             <div className="mt-6">
-              <label className="flex items-center space-x-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={isAgreementCheckedChild}
-                  onChange={(e) => setIsAgreementCheckedChild(e.target.checked)}
-                  className="form-checkbox h-5 w-5 text-purple-600 rounded border-gray-300 focus:ring-purple-500"
-                />
-                <span className="text-base font-medium  text-red-500">
-                  * Child Agreement & Disclaimer form completed and signed
-                  (Staff Check)
-                </span>
-              </label>
+              <Tooltip text="The Dependent must read and sign the paper form before you check this box. This is a legal requirement for site safety.">
+                <label className="flex items-center space-x-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isAgreementCheckedChild}
+                    onChange={(e) =>
+                      setIsAgreementCheckedChild(e.target.checked)
+                    }
+                    className="form-checkbox h-5 w-5 text-purple-600 rounded border-gray-300 focus:ring-purple-500"
+                  />
+                  <span className="text-base font-medium  text-red-500">
+                    * Child Agreement & Disclaimer form completed and signed
+                    (Staff Check)
+                  </span>
+                </label>
+              </Tooltip>
             </div>
           )}
 
         {["contractor"].includes(formData.visitorType) && (
           <div className="mt-6">
-            <label className="flex items-center space-x-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={isAgreementCheckedAdult}
-                onChange={(e) => setIsAgreementCheckedAdult(e.target.checked)}
-                className="form-checkbox h-5 w-5 text-purple-600 rounded border-gray-300 focus:ring-purple-500"
-              />
-              <span className="text-base font-medium  text-red-500">
-                * Contractor H&S and Site Risk Assessment briefing completed and
-                confirmed (Staff Check)
-              </span>
-            </label>
+            <Tooltip text="The Contractor must read and sign the paper form before you check this box. This is a legal requirement for site safety.">
+              <label className="flex items-center space-x-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isAgreementCheckedAdult}
+                  onChange={(e) => setIsAgreementCheckedAdult(e.target.checked)}
+                  className="form-checkbox h-5 w-5 text-purple-600 rounded border-gray-300 focus:ring-purple-500"
+                />
+                <span className="text-base font-medium  text-red-500">
+                  * Contractor H&S and Site Risk Assessment briefing completed
+                  and signed (Staff Check)
+                </span>
+              </label>
+            </Tooltip>
           </div>
         )}
 
         {["visitor", "professional"].includes(formData.visitorType) && (
           <div className="mt-6">
-            <label className="flex items-center space-x-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={isAgreementCheckedAdult}
-                onChange={(e) => setIsAgreementCheckedAdult(e.target.checked)}
-                className="form-checkbox h-5 w-5 text-purple-600 rounded border-gray-300 focus:ring-purple-500"
-              />
-              <span className="text-base font-medium  text-red-500">
-                * Visitor Agreement & Disclaimer form completed and signed
-                (Staff Check)
-              </span>
-            </label>
+            <Tooltip text="The visitor must read and sign the paper form before you check this box. This is a legal requirement for site safety.">
+              <label className="flex items-center space-x-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isAgreementCheckedAdult}
+                  onChange={(e) => setIsAgreementCheckedAdult(e.target.checked)}
+                  className="form-checkbox h-5 w-5 text-purple-600 rounded border-gray-300 focus:ring-purple-500"
+                />
+                <span className="text-base font-medium  text-red-500">
+                  * Visitor Agreement & Disclaimer form completed and signed
+                  (Staff Check)
+                </span>
+              </label>
+            </Tooltip>
           </div>
         )}
 

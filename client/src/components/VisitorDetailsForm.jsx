@@ -1,5 +1,10 @@
-import React from "react";
-const API_BASE_URL = "http://localhost:3001";
+import Tooltip from "./Tooltip";
+// UNIVERSAL PORT LOGIC: Detects if running in Dev (5173) or Production (window.location.origin)
+const API_BASE_URL =
+  window.location.port === "5173"
+    ? "http://localhost:3001"
+    : window.location.origin;
+
 const VisitorDetailsForm = ({
   selectedVisitor,
   editFormData,
@@ -315,6 +320,7 @@ const VisitorDetailsForm = ({
               * Child Agreement & Disclaimer Paper form signed and kept (Staff
               Check)
             </span>
+            <Tooltip text="Staff must verify that the guardian has signed the paper disclaimer for all accompanying children before signing in.Buttons below will remain disabled until this is checked." />
           </label>
         </div>
       )}
@@ -332,6 +338,7 @@ const VisitorDetailsForm = ({
               * Contractor H&S and Site Risk Assessment briefing completed and
               confirmed (Staff Check)
             </span>
+            <Tooltip text="Required for Health & Safety compliance. Buttons below will remain disabled until this is checked." />
           </label>
         </div>
       )}
@@ -348,11 +355,13 @@ const VisitorDetailsForm = ({
               * Visitor Agreement & Disclaimer Paper form signed and kept (Staff
               Check)
             </span>
+            <Tooltip text="Required for Health & Safety compliance. Buttons below will remain disabled until this is checked." />
           </label>
         </div>
       )}
       {/* Action Buttons */}
       <div className="flex flex-wrap justify-center gap-4 pt-8 border-t mt-8">
+        <Tooltip text="Missed signing them in? Use this to record a past visit. It signs them in and out instantly" />
         <button
           onClick={handleRecordMissedVisitClick}
           className={`px-8 py-3 font-bold rounded-lg transition-all shadow-xl ${
@@ -390,7 +399,7 @@ const VisitorDetailsForm = ({
         >
           {isBanned ? "Unban" : "Ban"}
         </button>
-
+        <Tooltip text="Use this to updates the visitor's profile with any changes to their details or dependents (added/removed) and signs them in for today." />
         <button
           onClick={handleUpdate}
           className={`px-8 py-3 font-bold rounded-lg transition-all shadow-xl whitespace-nowrap ${

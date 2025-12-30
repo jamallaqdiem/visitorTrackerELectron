@@ -1,39 +1,40 @@
 const express = require("express");
+const router = express.Router();
 
 /**
- * Creates and configures a router for handling visitor banning.
- *
- * @param {object} db - The SQLite database instance.
- * @returns {express.Router} - An Express router with the ban endpoint.
+ * Router to handle banning a visitor.
+ * @param {object} db - SQLite database instance.
+ * @param {object} logger - Winston logger instance.
  */
-function createBanVisitorRouter(db) {
-  const router = express.Router();
+module.exports = (db, logger) => {
+  router.post("/ban-visitor", (req, res) => {
+    const { visitor_id } = req.body;
 
-  // Endpoint to ban a visitor by updating their is_banned status to 1
-  router.post("/ban-visitor/:id", (req, res) => {
-    const { id } = req.params;
-
-    if (!id) {
-      return res.status(400).json({ message: "Visitor ID is required." });
+    if (!visitor_id) {
+      logger?.warn("Ban Request: Received request with missing visitor_id.");
+      return res.status(400).json({ error: "Visitor ID is required." });
     }
 
     const sql = `UPDATE visitors SET is_banned = 1 WHERE id = ?`;
-    db.run(sql, [id], function (err) {
+
+    db.run(sql, [visitor_id], function (err) {
       if (err) {
-        console.error("SQL Error banning visitor:", err.message);
-        return res.status(500).json({ error: err.message });
+        logger?.error(`Ban Request: Failed to ban visitor ID ${visitor_id} - ${err.message}`);
+        return res.status(500).json({ error: "Failed to ban visitor." });
       }
 
-      // Check if any rows were actually changed (if the visitor ID existed)
       if (this.changes === 0) {
+        logger?.warn(`Ban Request: Attempted to ban non-existent visitor ID ${visitor_id}`);
         return res.status(404).json({ message: "Visitor not found." });
       }
 
-      res.status(200).json({ message: `Visitor has been banned & sign it out.` });
+      logger?.info(`Ban Action: Visitor ID ${visitor_id} has been successfully banned.`);
+      res.status(200).json({ 
+        message: "Visitor has been banned successfully.",
+        visitor_id: visitor_id 
+      });
     });
   });
 
   return router;
-}
-
-module.exports = createBanVisitorRouter;
+};

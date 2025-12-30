@@ -1,13 +1,21 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import VisitorsDashboard from "./components/VisitorsDashboard";
 import VisitorDetailsForm from "./components/VisitorDetailsForm";
 import VisitorRegistrationForm from "./components/VisitorRegistrationForm";
 import PasswordModal from "./components/PasswordModal";
 import RecordMissedVisitModal from "./components/RecordMissedVisitModal";
 import HistoryDashboard from "./components/VisitHistory";
-import SalvationArmyLogo from '../Salvation-Army-logo.png';
+import { logClientError } from "./components/utils/error_logging";
+import SystemStatusWidget from './components/SystemStatusWidget';
+import TutorialModal from './components/TutorialModal';
+import ContractorHandoverModal from "./components/ContractorHandoverModal";
+import { HelpCircle } from 'lucide-react';
 
-const API_BASE_URL = "http://localhost:3001";
+// UNIVERSAL PORT LOGIC: Detects if running in Dev (5173) or Production (window.location.origin)
+const API_BASE_URL =
+  window.location.port === "5173"
+    ? "http://localhost:3001"
+    : window.location.origin;
 
 // Initial state for the registration form
 const initialRegistrationForm = {
@@ -136,6 +144,14 @@ function App() {
       const data = await response.json();
       setVisitors(data);
     } catch (err) {
+      logClientError(
+        err, 
+        { 
+          // Include relevant context data for debugging
+          endpoint: '/visitors'
+        }, 
+        'API_VISITORS_FAIL'
+      );
       console.error("Error fetching visitors:", err);
       setError("Failed to load active visitors.");
       setVisitors([]);
@@ -190,6 +206,15 @@ function App() {
         setShowRegistration(false);
       }
     } catch (err) {
+      logClientError(
+        err, 
+        { 
+          // Include relevant context data for debugging
+          searchTerm: trimmedTerm,
+          endpoint: '/visitor-search'
+        }, 
+        'API_VISITORS_FAIL'
+      );
       console.error("Search Error:", err.message);
       showNotification(`Search Failed: ${err.message}`, "error");
     } finally {
@@ -347,6 +372,15 @@ function App() {
 
       fetchVisitors(); // Refresh the list
     } catch (err) {
+       logClientError(
+        err, 
+        { 
+          // Include relevant context data for debugging
+          visitorName: `${regFormData.firstName} ${regFormData.lastName}`,
+          endpoint: '/register-visitor'
+        }, 
+        'API_REGISTRATION_FAIL'
+      );
       console.error("Registration Error:", err.message);
       showNotification(`Registration Failed: ${err.message}`, "error");
     } finally {
@@ -398,6 +432,16 @@ function App() {
         fetchVisitors();
       }, 3000);
     } catch (err) {
+      logClientError(
+        err, 
+        { 
+          // Include relevant context data for debugging
+          visitorName: `${selectedVisitor.first_name} ${selectedVisitor.last_name}`,
+          visitorId: id,
+          endpoint: '/login'
+        }, 
+        'API_LOGIN_FAIL'
+      );
       console.error("Login Error:", err.message);
       showNotification(`Login Failed: ${err.message}`, "error");
     }
@@ -461,6 +505,16 @@ function App() {
         fetchVisitors();
       }, 2000);
     } catch (err) {
+       logClientError(
+        err, 
+        { 
+          // Include relevant context data for debugging
+          visitorName: `${selectedVisitor.first_name} ${selectedVisitor.last_name}`,
+          visitorId: selectedVisitor.id,
+          endpoint: '/update-visitor-details'
+        }, 
+        'API_UPDATE_VISITOR_DETAILS_FAIL'
+      );
       console.error("Update & Login Error:", err.message);
       showNotification(`Update & sign Failed: ${err.message}`, "error");
     }
@@ -493,6 +547,16 @@ function App() {
         fetchVisitors();
       }, 3000);
     } catch (err) {
+      logClientError(
+        err, 
+        { 
+          // Include relevant context data for debugging
+          visitorName: `${selectedVisitor.first_name} ${selectedVisitor.last_name}`,
+          visitorId: id,
+          endpoint: '/ban-visitor'
+        }, 
+        'API_BAN_VISITOR_FAIL'
+      );
       console.error("Ban Error:", err.message);
       showNotification(`Ban Failed: ${err.message}`, "error");
     }
@@ -560,6 +624,16 @@ function App() {
         setSelectedVisitor((prev) => (prev ? { ...prev, is_banned: 0 } : null));
         fetchVisitors();
       } catch (err) {
+        logClientError(
+        err, 
+        { 
+          // Include relevant context data for debugging
+          visitorName: `${selectedVisitor.first_name} ${selectedVisitor.last_name}`,
+          visitorId: currentId,
+          endpoint: '/unban-visitor'
+        }, 
+        'API_UNBAN_FAIL'
+      );
         console.error("Unban Error:", err.message);
         showNotification(`Unban Failed: ${err.message}`, "error");
         setPassword("");
@@ -589,6 +663,15 @@ function App() {
         showNotification("History access granted. Loading data...", "blue");
         fetchHistoryRecords("", "", "");
       } catch (err) {
+        logClientError(
+        err, 
+        { 
+          // Include relevant context data for debugging
+          action: 'AUTHORIZE_HISTORY_VIEW',
+          endpoint: '/authorize-history'
+        }, 
+        'API_AUTHORIZE_HISTORY_FAIL'
+      );
         console.error("History Access Error:", err.message);
         showNotification(`Access Denied: ${err.message}`, "error");
         setPassword("");
@@ -657,33 +740,62 @@ function App() {
         handleCancelAction(); // Go back to the dashboard after success
       }, 3000);
     } catch (err) {
+       logClientError(
+        err, 
+        { 
+          // Include relevant context data for debugging
+          visitorName: `${selectedVisitor.first_name} ${selectedVisitor.last_name}`,
+          visitorId:visitorId,
+          endpoint: '/record-missed-visit'
+        }, 
+        'API_RECORD_MISSED_VISIT_FAIL'
+      );
       console.error("Missed Visit Error:", err.message);
       showNotification(`${err.message}`, "error");
     }
   };
 
 
-  // 6. Sign Out (From Dashboard)
-  const handleVisitorLogout = async (id) => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/exit-visitor/${id}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
+  // 6. Sign Out From Dashboard
+  // 1. This is what "Sign Out" button calls
+const handleVisitorLogout = (id) => {
+  const visitor = visitors.find(v => v.id === id);
+  
+  if (visitor?.type?.toLowerCase() === 'contractor') {
+    setVisitorToSignOut(id); // Opens the modal
+  } else {
+    executeApiLogout(id); // Regular logout
+  }
+};
+// 2.  what the Modal calls
+const confirmContractorExit = () => {
+  if (visitorToSignOut) {
+    executeApiLogout(visitorToSignOut);
+    setVisitorToSignOut(null); // Closes the modal
+  }
+};
+// 3.  The actual API logic
+const executeApiLogout = async (id) => {
+  const visitor = visitors.find(v => v.id === id);
+  try {
+    const response = await fetch(`${API_BASE_URL}/exit-visitor/${id}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
 
-      const result = await response.json();
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message || "Failed to sign out.");
 
-      if (!response.ok) {
-        throw new Error(result.message || "Failed to sign out visitor.");
-      }
-
-      showNotification(result.message, "success");
-      fetchVisitors();
-    } catch (err) {
-      console.error("Logout Error:", err.message);
-      showNotification(`Logout Failed: ${err.message}`, "error");
-    }
-  };
+    showNotification(result.message, "success");
+    fetchVisitors();
+  } catch (err) {
+    logClientError(err, { 
+      visitorName: visitor ? `${visitor.first_name} ${visitor.last_name}` : 'Unknown',
+      visitorId: id 
+    }, 'API_EXIT_VISITOR_FAIL');
+    showNotification(`Logout Failed: ${err.message}`, "error");
+  }
+};
 
   // --- HISTORY DATA LOGIC ---
 
@@ -755,6 +867,17 @@ function App() {
         "success"
       );
     } catch (e) {
+      logClientError(
+        e, 
+        { 
+          // Include relevant context data for debugging
+          query: query,
+          startDateFilter: start,
+          endDateFilter: end,
+          endpoint: '/history'
+        }, 
+        'API_HISTORY_FAIL'
+      );
       console.error("Error fetching history records:", e.message);
       showNotification(`Failed to fetch history: ${e.message}`, "error");
     } finally {
@@ -851,23 +974,36 @@ function App() {
   const showHistoryView = showHistory && !selectedVisitor && !showRegistration;
   const sortedHistoryData = sortData(filteredHistoryData, sortConfig);
 
-  return (
+    return (
     <div className="font-sans min-h-screen bg-blue-200 text-gray-800 p-4 md:p-8 flex flex-col items-center">
+      
       <style>{`
       @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
       body { font-family: 'Inter', sans-serif; }
     `}</style>
       <script src="https://cdn.tailwindcss.com"></script>
+      
+{/*  Modal logic (onClose must be false) */}
+  {showTutorial && <TutorialModal onClose={() => setShowTutorial(false)} />}
 
+  {/* Added a Button to trigger the help */}
+  <button
+    onClick={() => setShowTutorial(true)}
+    className="absolute top-0 right-50 flex items-center gap-2 px-8 py-2 bg-white text-indigo-800 rounded-lg font-bold text-xs shadow-md hover:bg-indigo-50 border border-indigo-200 transition-all"
+  >
+    <HelpCircle size={16} />
+    Help Guide
+  </button>
       {/* Header */}
-      <div className="flex flex-col items-center w-full mb-8 relative">
-        <img
-      src={SalvationArmyLogo}
-      alt="The Salvation Army Red Shield Logo"
-      className="absolute left-0 top-0 w-28 h-28 object-contain print-show-logo"
-      // Fallback in case the image path is broken
-      onError={(e) => { e.target.onerror = null; e.target.src = 'https://placehold.co/96x96/DA251C/ffffff?text=TSA'; }}
-    />
+       <div className="flex flex-col items-center w-full mb-8 relative">
+          <img
+            src="Salvation-Army-logo.png"
+            alt="The Salvation Army Red Shield Logo"
+            className="absolute left-0 top-0 w-28 h-28 object-contain print-show-logo"
+            // Fallback in case the image path is broken
+            onError={(e) => { e.target.onerror = null; e.target.src = 'https://placehold.co/96x96/DA251C/ffffff?text=TSA'; }}
+          />
+        <div className="flex flex-col  pt-3">
         <h1 className="text-4xl font-extrabold text-blue-800 mb-2">
           The Salvation Army Social Services
         </h1>
@@ -891,7 +1027,7 @@ function App() {
         >
           {showHistory ? "Show Dashboard" : "View Historical Data"}
         </button>
-
+      
         {/* Button Group for View Switching */}
         {!showHistory && !showRegistration && (
           <div className="flex min-w-[200px] justify-center mt-4">
@@ -914,8 +1050,9 @@ function App() {
             </button>
           </div>
         )}
+        </div>
       </div>
-
+      <div>
       <div className="w-full max-w-6xl mx-auto">
         {/* Dashboard View */}
         {!showRegistration && !showHistory && !selectedVisitor && (
@@ -1025,8 +1162,16 @@ function App() {
         setEntryTime={setMissedEntryTime}
         confirmAction={confirmRecordMissedVisit}
       />
+      <SystemStatusWidget />
+    
     </div>
+      <ContractorHandoverModal 
+      isOpen={!!visitorToSignOut} 
+      onConfirm={confirmContractorExit} 
+      onCancel={() => setVisitorToSignOut(null)} 
+    />
+  </div>
   );
-}
 
+  }
 export default App;
