@@ -71,7 +71,6 @@ const VisitorsDashboard = ({
               value={searchTerm}
               onChange={handleSearchInput} // Live search trigger
               className="w-full pl-10 pr-4 py-3 border-2 border-blue-300 rounded-lg focus:border-blue-500 focus:ring-blue-500 transition duration-200 shadow-inner"
-              disabled={loadingDashboard}
             />
           </div>
         </div>

@@ -22,16 +22,19 @@ const runAsync = (sql, params = []) => new Promise((resolve, reject) => {
 
 const app = express();
 app.use(express.json());
+
+// Mock protocol/host for photo URL testing
 app.use((req, res, next) => {
     req.protocol = 'http';
     req.get = (header) => (header === 'host' ? 'test:3001' : null);
     next();
 });
 
-app.use("/", createHistoryRouter(mockDb, mockLogger));
+//  Pass the test password here explicitly!
+const TEST_PASS = 'secure123';
+app.use("/", createHistoryRouter(mockDb, mockLogger, TEST_PASS));
 
 beforeAll(async () => {
-    // 1. Create tables and wait for completion
     await runAsync(`CREATE TABLE visitors (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         first_name TEXT,
@@ -64,12 +67,10 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-    // 2. Clean tables
     await runAsync("DELETE FROM dependents");
     await runAsync("DELETE FROM visits");
     await runAsync("DELETE FROM visitors");
 
-    // 3. Insert Test Data and wait
     await runAsync(`INSERT INTO visitors (id, first_name, last_name, is_banned) VALUES (1, 'Alice', 'Smith', 0)`);
     await runAsync(`INSERT INTO visits (id, visitor_id, entry_time, type, unit) 
                     VALUES (100, 1, '2024-05-01T10:00:00Z', 'Personal', 'A101')`);
@@ -81,20 +82,26 @@ beforeEach(async () => {
 describe('History Router Integration Tests', () => {
 
     test('POST /authorize-history should log success/failure', async () => {
-        process.env.MASTER_PASSWORD2 = 'secure123';
-        
-        await request(app).post('/authorize-history').send({ password: 'secure123' }).expect(200);
+        // Test Success
+        await request(app)
+            .post('/authorize-history')
+            .send({ password: 'secure123' })
+            .expect(200);
         expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining("Successful login"));
 
-        await request(app).post('/authorize-history').send({ password: 'wrong' }).expect(403);
-        expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining("Failed login attempt"));
+        // Test Failure
+        await request(app)
+            .post('/authorize-history')
+            .send({ password: 'wrong' })
+            .expect(403);
+        
+        expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining("Unauthorized history access"));
     });
 
     test('GET /history should retrieve records and log the query', async () => {
         const response = await request(app).get('/history');
         
         expect(response.status).toBe(200);
-        // This will now be 1 because we properly awaited the insertion
         expect(response.body.length).toBeGreaterThan(0);
         expect(response.body[0].first_name).toBe('Alice');
         expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining("History Query: Returned"));

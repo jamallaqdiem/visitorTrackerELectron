@@ -54,6 +54,7 @@
     "electron-rebuild": "^3.0.0"
   },
   "dependencies": {
-    "@sentry/electron": "^7.5.0"
+    "@sentry/electron": "^7.5.0",
+    "winston": "^3.19.0"
   }
 }

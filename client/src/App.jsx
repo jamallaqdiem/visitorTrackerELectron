@@ -11,11 +11,6 @@ import TutorialModal from './components/TutorialModal';
 import ContractorHandoverModal from "./components/ContractorHandoverModal";
 import { HelpCircle } from 'lucide-react';
 
-// UNIVERSAL PORT LOGIC: Detects if running in Dev (5173) or Production (window.location.origin)
-const API_BASE_URL =
-  window.location.port === "5173"
-    ? "http://localhost:3001"
-    : window.location.origin;
 
 // Initial state for the registration form
 const initialRegistrationForm = {
@@ -32,6 +27,7 @@ const initialRegistrationForm = {
 };
 
 function App() {
+  
   // --- Global State & Loading ---
   const [visitors, setVisitors] = useState([]);
   const [searchResults, setSearchResults] = useState([]);
@@ -39,10 +35,17 @@ function App() {
   const [error, setError] = useState(null);
   const [loadingRegistration, setLoadingRegistration] = useState(false);
 
+  const [showTutorial, setShowTutorial] = useState(false);
+  const [visitorToSignOut, setVisitorToSignOut] = useState(null);
   // --- UI/Mode State ---
   const [searchTerm, setSearchTerm] = useState("");
   const [showRegistration, setShowRegistration] = useState(false);
   const [selectedVisitor, setSelectedVisitor] = useState(null);
+
+    // --- Record Missed Visit Modal State ---
+  const [showMissedVisitModal, setShowMissedVisitModal] = useState(false);
+  const [missedEntryTime, setMissedEntryTime] = useState("");
+
 
   // --- Registration Form State ---
   const [regFormData, setRegFormData] = useState(initialRegistrationForm);
@@ -64,6 +67,19 @@ function App() {
     direction: "descending",
   });
 
+   // --- Modal Context State (Tracks the pending action) ---
+  const [modalContext, setModalContext] = useState({
+    type: null, 
+    visitorId: null, 
+    title: "",
+    description: "",
+    submitText: "",
+    submitColor: "bg-green-600 hover:bg-green-700",
+  });
+
+  // Debounce for live search
+  const debounceTimeoutRef = useRef(null);
+
   // --- Visitor Details/Update Form State ---
   const [editFormData, setEditFormData] = useState({});
   const [isDetailsAgreementChecked, setIsDetailsAgreementChecked] = useState(false);
@@ -76,23 +92,35 @@ function App() {
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [password, setPassword] = useState(""); // Universal password input state
   const [showPassword, setShowPassword] = useState(false); // Universal show/hide password state
+const [isReady, setIsReady] = useState(false);
 
-  // --- Modal Context State (Tracks the pending action) ---
-  const [modalContext, setModalContext] = useState({
-    type: null, 
-    visitorId: null, 
-    title: "",
-    description: "",
-    submitText: "",
-    submitColor: "bg-green-600 hover:bg-green-700",
-  });
+useEffect(() => {
+  const detectPort = async () => {
+    if (window.apiConfig && window.apiConfig.getPort) {
+      try {
+        const port = await window.apiConfig.getPort();
+        window.API_BASE_URL = `http://localhost:${port}`;
+        
+        // Small delay to ensure the Node.js server 
 
-  // --- Record Missed Visit Modal State ---
-  const [showMissedVisitModal, setShowMissedVisitModal] = useState(false);
-  const [missedEntryTime, setMissedEntryTime] = useState("");
+        setTimeout(() => {
+          setIsReady(true);
+        }, 500); 
 
-  // Debounce for live search
-  const debounceTimeoutRef = useRef(null);
+      } catch (err) {
+        console.error("Failed to get port:", err);
+        window.API_BASE_URL = "http://localhost:3001";
+        setIsReady(true);
+      }
+    } else {
+      window.API_BASE_URL = "http://localhost:3001";
+      setIsReady(true);
+    }
+  };
+
+  detectPort();
+}, []);
+ 
 
   // Helper function for showing a transient message
   const showNotification = (msg, type = "success") => {
@@ -133,11 +161,15 @@ function App() {
 
   // --- API: Fetch Currently Signed-In Visitors ---
   const fetchVisitors = useCallback(async () => {
+    // check if is ready first
+     if (!window.API_BASE_URL || !isReady) return;
+
     // Only show loading indicator initially or when explicitly triggered
     setIsLoading(true);
     setError(null);
+  
     try {
-      const response = await fetch(`${API_BASE_URL}/visitors`);
+      const response = await fetch(`${window.API_BASE_URL}/visitors`);
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -158,15 +190,15 @@ function App() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [isReady]);
 
-  // EFFECT: Auto-refresh "Who is On Site" table every 5 seconds
+  // EFFECT: Auto-refresh "Who is On Site" table every 10 seconds
   useEffect(() => {
     // Fetch immediately on mount
     fetchVisitors();
 
-    // Set up interval for refreshing every 5000ms
-    const intervalId = setInterval(fetchVisitors, 5000);
+    // Set up interval for refreshing every 1000ms
+    const intervalId = setInterval(fetchVisitors, 10000);
 
     // Clean up interval on unmount
     return () => clearInterval(intervalId);
@@ -188,7 +220,7 @@ function App() {
 
     try {
       const encodedSearchTerm = encodeURIComponent(trimmedTerm);
-      const url = `${API_BASE_URL}/visitor-search?name=${encodedSearchTerm}`;
+      const url = `${window.API_BASE_URL}/visitor-search?name=${encodedSearchTerm}`;
 
       const response = await fetch(url);
       const data = await response.json();
@@ -222,20 +254,18 @@ function App() {
     }
   }, []);
 
-  const handleSearchInput = useCallback((e) => {
+ const handleSearchInput = useCallback((e) => {
     const term = e.target.value;
     setSearchTerm(term);
 
-    // Clear previous timeout
     if (debounceTimeoutRef.current) {
       clearTimeout(debounceTimeoutRef.current);
     }
 
-    // Set a new timeout
     debounceTimeoutRef.current = setTimeout(() => {
       handleVisitorSearch(term);
     }, 600);
-  });
+  }, [handleVisitorSearch]);
 
   // --- Visitor Selection Handler ---
   const handleVisitorSelect = (visitor) => {
@@ -347,7 +377,7 @@ function App() {
     }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/register-visitor`, {
+      const response = await fetch(`${window.API_BASE_URL}/register-visitor`, {
         method: "POST",
         body: formData,
       });
@@ -414,7 +444,7 @@ function App() {
     }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/login`, {
+      const response = await fetch(`${window.API_BASE_URL}/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),
@@ -487,7 +517,7 @@ function App() {
     };
 
     try {
-      const response = await fetch(`${API_BASE_URL}/update-visitor-details`, {
+      const response = await fetch(`${window.API_BASE_URL}/update-visitor-details`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(dataToSend),
@@ -519,48 +549,50 @@ function App() {
       showNotification(`Update & sign Failed: ${err.message}`, "error");
     }
   };
-
+  
   // 3.Handle Ban Visitor
-  const handleBan = async (id) => {
-    if (!id) return;
-    const isCurrentlySignedIn = visitors.some(
-      (activeVisitor) => activeVisitor.id === id
-    );
-    try {
-      const response = await fetch(`${API_BASE_URL}/ban-visitor/${id}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
+const handleBan = async (id) => {
+  if (!id) return;
+  
+  const isCurrentlySignedIn = visitors.some(
+    (activeVisitor) => activeVisitor.id === id
+  );
 
-      const result = await response.json();
+  try {
+    const response = await fetch(`${window.API_BASE_URL}/ban-visitor`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ visitor_id: id }), 
+    });
 
-      if (!response.ok) {
-        throw new Error(result.message || "Failed to ban visitor.");
-      }
-      if (isCurrentlySignedIn) {
-        await handleVisitorLogout(id);
-      }
-      showNotification(result.message, "error");
-      setSelectedVisitor((prev) => (prev ? { ...prev, is_banned: 1 } : null)); // Update local state
-      setTimeout(() => {
-        handleCancelAction();
-        fetchVisitors();
-      }, 3000);
-    } catch (err) {
-      logClientError(
-        err, 
-        { 
-          // Include relevant context data for debugging
-          visitorName: `${selectedVisitor.first_name} ${selectedVisitor.last_name}`,
-          visitorId: id,
-          endpoint: '/ban-visitor'
-        }, 
-        'API_BAN_VISITOR_FAIL'
-      );
-      console.error("Ban Error:", err.message);
-      showNotification(`Ban Failed: ${err.message}`, "error");
+    // Handle the response 
+    const result = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(result.message || "Failed to ban visitor.");
     }
-  };
+
+    if (isCurrentlySignedIn) {
+      await handleVisitorLogout(id);
+    }
+
+    showNotification(result.message, "error");
+    setSelectedVisitor((prev) => (prev ? { ...prev, is_banned: 1 } : null));
+
+    setTimeout(() => {
+      handleCancelAction();
+      fetchVisitors();
+    }, 3000);
+
+  } catch (err) {
+    logClientError(err, { 
+        visitorName: `${selectedVisitor?.first_name} ${selectedVisitor?.last_name}`,
+        visitorId: id,
+        endpoint: '/ban-visitor'
+      }, 'API_BAN_VISITOR_FAIL');
+    showNotification(`Ban Failed: ${err.message}`, "error");
+  }
+};
 
   // The first function that will handle the unban password.
   const handleUnbanClick = (id) => {
@@ -606,7 +638,7 @@ function App() {
     if (currentAction === "unban") {
       try {
         const response = await fetch(
-          `${API_BASE_URL}/unban-visitor/${currentId}`,
+          `${window.API_BASE_URL}/unban-visitor/${currentId}`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -644,7 +676,7 @@ function App() {
     else if (currentAction === "viewHistory") {
       //  Password check for history data
       try {
-        const response = await fetch(`${API_BASE_URL}/authorize-history`, {
+        const response = await fetch(`${window.API_BASE_URL}/authorize-history`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ password }),
@@ -720,7 +752,7 @@ function App() {
     setShowMissedVisitModal(false);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/record-missed-visit`, {
+      const response = await fetch(`${window.API_BASE_URL}/record-missed-visit`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -778,7 +810,7 @@ const confirmContractorExit = () => {
 const executeApiLogout = async (id) => {
   const visitor = visitors.find(v => v.id === id);
   try {
-    const response = await fetch(`${API_BASE_URL}/exit-visitor/${id}`, {
+    const response = await fetch(`${window.API_BASE_URL}/exit-visitor/${id}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
     });
@@ -827,10 +859,10 @@ const executeApiLogout = async (id) => {
     setHistoryLoading(true);
 
     try {
-      const url = new URL(`${API_BASE_URL}/history`);
+      const url = new URL(`${window.API_BASE_URL}/history`);
       if (query) url.searchParams.append("query", query);
-      if (start) url.searchParams.append("endDate", start);
-      if (end) url.searchParams.append("endDate", end);
+      if (start) url.searchParams.append("start_date", start);
+      if (end) url.searchParams.append("end_date", end);
 
       const response = await fetch(url.toString());
 
@@ -968,12 +1000,20 @@ const executeApiLogout = async (id) => {
       "blue"
     );
   };
-
+  
   // Determine which view to show
   const showDashboard = !selectedVisitor && !showRegistration;
   const showHistoryView = showHistory && !selectedVisitor && !showRegistration;
   const sortedHistoryData = sortData(filteredHistoryData, sortConfig);
 
+// 4. THE "GATE" 
+  if (!isReady) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-gray-50">
+         <p>Connecting to Salvation Army Database...</p>
+      </div>
+    );
+  }
     return (
     <div className="font-sans min-h-screen bg-blue-200 text-gray-800 p-4 md:p-8 flex flex-col items-center">
       
@@ -994,6 +1034,7 @@ const executeApiLogout = async (id) => {
     <HelpCircle size={16} />
     Help Guide
   </button>
+
       {/* Header */}
        <div className="flex flex-col items-center w-full mb-8 relative">
           <img
@@ -1007,9 +1048,6 @@ const executeApiLogout = async (id) => {
         <h1 className="text-4xl font-extrabold text-blue-800 mb-2">
           The Salvation Army Social Services
         </h1>
-        <p className="text-lg text-blue-950 mb-4">
-          Catherine Booth House Visitors Tracking
-        </p>
         <button
           onClick={() => {
             const newState = !showHistory;
@@ -1172,6 +1210,6 @@ const executeApiLogout = async (id) => {
     />
   </div>
   );
-
   }
+
 export default App;

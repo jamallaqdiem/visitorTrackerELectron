@@ -3,7 +3,7 @@ const express = require('express');
 const sqlite3 = require('sqlite3');
 const createRegistrationRouter = require('./registration');
 
-// 1. Mock the Logger (Critical for the new router signature)
+// 1. Mock the Logger 
 const mockLogger = {
     info: jest.fn(),
     warn: jest.fn(),

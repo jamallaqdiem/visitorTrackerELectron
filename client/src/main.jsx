@@ -3,24 +3,30 @@ import { createRoot } from 'react-dom/client';
 import './index.css';
 import App from './App.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
-import * as Sentry from "@sentry/electron/renderer"; // CRITICAL: Use electron renderer
+import * as Sentry from "@sentry/electron/renderer";
 import { logClientError } from './components/utils/error_logging';
 
-// It automatically inherits it from the Main process we configured .
-Sentry.init({
-  sendDefaultPii: false,
-  //  keep the basic masking for privacy.
-  integrations: [
-    Sentry.replayIntegration({
-      maskAllText: true,
-      blockAllMedia: true,
-    }),
-  ],
-  replaysSessionSampleRate: 0.1,
-  replaysOnErrorSampleRate: 1.0,
-});
+// 1. Fetch DSN from Environment or window.api (if exposed config).
+const SENTRY_DSN = import.meta.env.VITE_SENTRY_DSN || "";
 
-// Console Error Interceptor (for logs)
+if (SENTRY_DSN) {
+  Sentry.init({
+    dsn: SENTRY_DSN,
+    integrations: [
+      Sentry.browserApiErrorsIntegration({
+        breadcrumbs: false, 
+      }),
+      //  FOR PRIVACY:
+      Sentry.replayIntegration({
+        maskAllText: true,    // Blocks visitor names/addresses from being seen in replays
+        blockAllMedia: true,  // Blocks visitor photos from being seen in replays
+      }),
+    ],
+  });
+  console.log("🚀 Frontend Sentry initialized.");
+}
+
+// Console Error Interceptor ( for catching specific React warnings)
 const originalConsoleError = console.error;
 console.error = (...args) => {
   const message = args[0];
@@ -39,5 +45,5 @@ createRoot(document.getElementById('root')).render(
     <ErrorBoundary>
       <App />
     </ErrorBoundary>
-  </StrictMode>,
+  </StrictMode>
 );

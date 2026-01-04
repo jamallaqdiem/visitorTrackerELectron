@@ -2,7 +2,7 @@ const request = require("supertest");
 const express = require("express");
 const sqlite3 = require("sqlite3").verbose();
 const createAuditRouter = require("./audit_logs");
-const { getStatus, updateStatus } = require("../status_tracker");
+const statusTracker = require("../status_tracker"); // Import the whole object
 
 let mockDb;
 let app;
@@ -26,7 +26,6 @@ beforeAll(async () => {
         debug: jest.fn(),
     };
 
-    // event_name, timestamp, and status are NOT NULL
     await runDb(mockDb, `
         CREATE TABLE audit_logs (
             id INTEGER PRIMARY KEY,
@@ -46,13 +45,14 @@ beforeAll(async () => {
 
 afterEach(async () => {
     await runDb(mockDb, "DELETE FROM audit_logs");
-    updateStatus("last_error", null);
+    statusTracker.updateStatus("last_error", null);
     jest.clearAllMocks();
+    jest.restoreAllMocks(); // Important to clean up spies
 });
 
 describe("Audit Log Endpoint Integration Test", () => {
     
-  test("POST /api/audit/log-error should return 201 on success", async () => {
+    test("POST /api/audit/log-error should return 201 on success", async () => {
         const testData = {
             event_name: "UI_CRASH",
             timestamp: new Date().toISOString(),
@@ -63,29 +63,35 @@ describe("Audit Log Endpoint Integration Test", () => {
             .post('/api/audit/log-error')
             .send(testData)
             .expect(201);
+            
         expect(response.body.message).toBe("Client error logged successfully");
     });
 
     test("POST /api/audit/log-error should return 400 if fields are missing", async () => {
-        const response = await request(app)
+        await request(app)
             .post('/api/audit/log-error')
-            .send({ event_name: "ONLY_NAME" }) // Missing timestamp/status
+            .send({ event_name: "ONLY_NAME" }) 
             .expect(400);
 
         expect(loggerMock.warn).toHaveBeenCalled();
     });
 
-test("POST /api/audit/log-error should return 400 if fields are totally missing", async () => {
-        const response = await request(app)
+    test("POST /api/audit/log-error should return 400 if fields are totally missing", async () => {
+        await request(app)
             .post('/api/audit/log-error')
             .send({ message: "no name or status" }) 
             .expect(400);
     });
 
-    test("POST /api/audit/log-error should return 202 if DB insertion fails (Constraint Violation)", async () => {
+    test("POST /api/audit/log-error should return 202 if logging logic fails", async () => {
+        // Spy on the object method and force it to throw
+        jest.spyOn(statusTracker, 'updateStatus').mockImplementationOnce(() => {
+            throw new Error("Simulated Crash");
+        });
+
         const testData = {
-            event_name: "DB_FAIL_TRIGGER",
-            timestamp: null, // This violates the NOT NULL constraint in SQLite
+            event_name: "FAIL_TEST",
+            timestamp: new Date().toISOString(),
             status: "ERROR"
         };
 

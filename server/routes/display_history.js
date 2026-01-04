@@ -13,12 +13,14 @@ function createHistoryRouter(db, logger,ADMIN_PASSWORD_1) {
   router.post("/authorize-history", (req, res) => {
     const { password } = req.body;
 
-    if (password && password=== ADMIN_PASSWORD_1) {
-      logger?.info("Admin Authorization: Successful login to history dashboard.");
-      return res.status(200).json({ success: true, message: "Authorization successful." });
+ // Use .trim() to remove accidental spaces from BOTH the input and the config
+    if (password && password.trim() === ADMIN_PASSWORD_1.trim()) {
+        logger?.info("Admin Authorization: Successful login.");
+        return res.status(200).json({ success: true });
     } else {
-      logger?.warn("Admin Authorization: Failed login attempt with incorrect password.");
-      return res.status(403).json({ message: "Incorrect password." });
+
+       logger?.warn("Security: Unauthorized history access attempt.");
+        return res.status(403).json({ message: "Incorrect password." });
     }
   });
 
@@ -71,7 +73,7 @@ function createHistoryRouter(db, logger,ADMIN_PASSWORD_1) {
         let dependents = [];
         if (row.additional_dependents_json) {
           try {
-            // Fix for SQL GROUP_CONCAT which doesn't wrap in brackets
+            //for SQL GROUP_CONCAT which doesn't wrap in brackets
             dependents = JSON.parse(`[${row.additional_dependents_json}]`);
           } catch (e) {
             logger?.warn(`History: Failed to parse dependents for visit ${row.visit_id}`);

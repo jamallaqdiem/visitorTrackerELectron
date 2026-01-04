@@ -87,7 +87,12 @@ function HistoryDashboard({
   };
 
   const handleExport = () => {
-    window.print();
+if (window.apiConfig && window.apiConfig.saveAsPDF) {
+    window.apiConfig.saveAsPDF();
+  } else {
+    // This only runs in the browser/web dev mode
+    window.print(); 
+  }
   };
 
   const displayData = data;

@@ -75,7 +75,7 @@ const TutorialModal = ({ onClose }) => {
 
         {/* Content Body */}
         <div className="p-8">
-          <div className="flex justify-between text-xs font-bold text-gray-400 mb-4 uppercase tracking-wider">
+          <div className="flex justify-between text-xs font-bold text-black mb-4 uppercase tracking-wider">
             <span>
               Step {currentStep + 1} of {steps.length}
             </span>

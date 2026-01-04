@@ -28,7 +28,6 @@ function createVisitorsRouter(db, logger) {
         logger?.error(`SQL Error fetching signed-in visitors: ${err.message}`);
         return res.status(500).json({ error: err.message });
       }
-
       logger?.info(`Dashboard: Fetched ${rows.length} currently signed-in visitors.`);
 
       const resultsWithUrls = rows.map((row) => ({
@@ -39,7 +38,7 @@ function createVisitorsRouter(db, logger) {
       res.json(resultsWithUrls);
     });
   });
-
+  
   return router;
 }
 

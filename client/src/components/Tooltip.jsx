@@ -14,7 +14,7 @@ const Tooltip = ({ text, children }) => {
         onMouseEnter={() => setShow(true)}
         onMouseLeave={() => setShow(false)}
         onClick={() => setShow(!show)} // For touch screens
-        className="ml-2 inline-flex items-center justify-center w-5 h-5 text-xs font-bold text-gray-500 bg-gray-100 rounded-full border border-gray-300 hover:bg-blue-100 hover:text-blue-600 transition-colors cursor-help"
+        className="ml-2 inline-flex items-center justify-center w-5 h-5 text-xs font-bold text-black bg-gray-100 rounded-full border border-gray-300 hover:bg-blue-100 hover:text-blue-600 transition-colors cursor-help"
       >
         ?
       </button>

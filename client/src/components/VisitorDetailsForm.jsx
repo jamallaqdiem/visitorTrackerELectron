@@ -1,9 +1,4 @@
 import Tooltip from "./Tooltip";
-// UNIVERSAL PORT LOGIC: Detects if running in Dev (5173) or Production (window.location.origin)
-const API_BASE_URL =
-  window.location.port === "5173"
-    ? "http://localhost:3001"
-    : window.location.origin;
 
 const VisitorDetailsForm = ({
   selectedVisitor,
@@ -117,7 +112,9 @@ const VisitorDetailsForm = ({
               <img
                 src={
                   selectedVisitor.photo_path
-                    ? `${API_BASE_URL}${selectedVisitor.photo_path}` // Re-create the full URL here
+                    ? selectedVisitor.photo_path.startsWith("http")
+                      ? selectedVisitor.photo_path
+                      : `${window.API_BASE_URL}/${selectedVisitor.photo_path}`
                     : "https://placehold.co/160x160/ccc/666?text=No+Photo"
                 }
                 alt="Visitor Photo"
@@ -361,56 +358,65 @@ const VisitorDetailsForm = ({
       )}
       {/* Action Buttons */}
       <div className="flex flex-wrap justify-center gap-4 pt-8 border-t mt-8">
-        <Tooltip text="Missed signing them in? Use this to record a past visit. It signs them in and out instantly" />
-        <button
-          onClick={handleRecordMissedVisitClick}
-          className={`px-8 py-3 font-bold rounded-lg transition-all shadow-xl ${
-            shouldDisable
-              ? "bg-gray-400 text-gray-700 cursor-not-allowed"
-              : "bg-yellow-700 -600 text-white hover:bg-yellow-900 -700"
-          }`}
-          disabled={shouldDisable}
-        >
-          Correct Missed Entry
-        </button>
-        <button
-          onClick={() => handleLogin(selectedVisitor.id)}
-          className={`px-8 py-3 font-bold rounded-lg transition-all shadow-xl ${
-            shouldDisable
-              ? "bg-gray-400 text-gray-700 cursor-not-allowed"
-              : "bg-blue-600 text-white hover:bg-blue-700"
-          }`}
-          disabled={shouldDisable}
-        >
-          Sign In
-        </button>
+        <div className="flex flex-col items-center gap-1">
+          <Tooltip text="Missed signing them in? Use this to record a past visit. It signs them in and out instantly" />
+          <button
+            onClick={handleRecordMissedVisitClick}
+            className={`px-8 py-3 font-bold rounded-lg transition-all shadow-xl ${
+              shouldDisable
+                ? "bg-gray-400 text-gray-700 cursor-not-allowed"
+                : "bg-yellow-700 -600 text-white hover:bg-yellow-900 -700"
+            }`}
+            disabled={shouldDisable}
+          >
+            Correct Missed Entry
+          </button>
+        </div>
+        <div className="flex flex-col items-center gap-1">
+          <button
+            onClick={() => handleLogin(selectedVisitor.id)}
+            className={`px-8 py-3 font-bold rounded-lg transition-all shadow-xl ${
+              shouldDisable
+                ? "bg-gray-400 text-gray-700 cursor-not-allowed"
+                : "bg-blue-600 text-white hover:bg-blue-700"
+            }`}
+            disabled={shouldDisable}
+          >
+            Sign In
+          </button>
+        </div>
 
-        <button
-          onClick={
-            isBanned
-              ? () => handleUnbanClick(selectedVisitor.id)
-              : () => handleBan(selectedVisitor.id)
-          }
-          className={`px-8 py-3 font-bold rounded-lg transition-all shadow-xl ${
-            isBanned
-              ? "bg-green-600 text-white hover:bg-green-700"
-              : "bg-red-600 text-white hover:bg-red-700"
-          }`}
-        >
-          {isBanned ? "Unban" : "Ban"}
-        </button>
-        <Tooltip text="Use this to updates the visitor's profile with any changes to their details or dependents (added/removed) and signs them in for today." />
-        <button
-          onClick={handleUpdate}
-          className={`px-8 py-3 font-bold rounded-lg transition-all shadow-xl whitespace-nowrap ${
-            shouldDisable
-              ? "bg-gray-400 text-gray-700 cursor-not-allowed"
-              : "bg-green-600 text-white hover:bg-green-700"
-          }`}
-          disabled={shouldDisable}
-        >
-          Save Updates & Sign In
-        </button>
+        <div className="flex flex-col items-center gap-1">
+          <button
+            onClick={
+              isBanned
+                ? () => handleUnbanClick(selectedVisitor.id)
+                : () => handleBan(selectedVisitor.id)
+            }
+            className={`px-8 py-3 font-bold rounded-lg transition-all shadow-xl ${
+              isBanned
+                ? "bg-green-600 text-white hover:bg-green-700"
+                : "bg-red-600 text-white hover:bg-red-700"
+            }`}
+          >
+            {isBanned ? "Unban" : "Ban"}
+          </button>
+        </div>
+
+        <div className="flex flex-col items-center gap-1">
+          <Tooltip text="Use this to updates the visitor's profile with any changes to their details or dependents (added/removed) and signs them in for today." />
+          <button
+            onClick={handleUpdate}
+            className={`px-8 py-3 font-bold rounded-lg transition-all shadow-xl whitespace-nowrap ${
+              shouldDisable
+                ? "bg-gray-400 text-gray-700 cursor-not-allowed"
+                : "bg-green-600 text-white hover:bg-green-700"
+            }`}
+            disabled={shouldDisable}
+          >
+            Save Updates & Sign In
+          </button>
+        </div>
 
         <button
           onClick={handleCancelLogIn}

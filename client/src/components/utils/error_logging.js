@@ -1,4 +1,4 @@
-import * as Sentry from "@sentry/electron/renderer"; //  for Electron
+import * as Sentry from "@sentry/electron/renderer"; 
 
 /**
  * Global function to log client-side errors to the backend.
@@ -6,22 +6,15 @@ import * as Sentry from "@sentry/electron/renderer"; //  for Electron
 export async function logClientError(error, info = {}, type = 'CLIENT_ERROR') {
   if (!error) return;
 
-  // DYNAMIC PORT LOGIC: Uses window.location.origin automatically
-  const API_BASE_URL = window.location.port === "5173" 
-    ? "http://localhost:3001" 
-    : window.location.origin;
-
+// Use the dynamic port caught by App.jsx, or fallback to 3001
+  const baseUrl = window.API_BASE_URL || "http://localhost:3001";
+  
   const logData = {
     event_name: type,
     timestamp: new Date().toISOString(),
     status: 'Failed',
     client_message: error.message,
     client_stack: error.stack,
-    client_info: JSON.stringify({
-      ...info,
-      url: window.location.href,
-      userAgent: navigator.userAgent,
-    }),
   };
 
   // Log to Console for local debugging
@@ -34,8 +27,8 @@ export async function logClientError(error, info = {}, type = 'CLIENT_ERROR') {
   Sentry.captureException(error, { extra: info });
 
   try {
-    // Send to your Express audit logs
-    await fetch(`${API_BASE_URL}/api/audit/log-error`, {
+    // Send to Express audit logs
+    await fetch(`${baseUrl}/api/audit/log-error`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

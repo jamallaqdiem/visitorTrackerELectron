@@ -12,3 +12,8 @@ contextBridge.exposeInMainWorld('electron', {
   //A secure way to close the application from the UI (if needed)
   closeApp: () => ipcRenderer.send('app:close')
 });
+
+contextBridge.exposeInMainWorld('apiConfig', {
+   getPort: () => ipcRenderer.invoke('get-port'),
+   saveAsPDF: () => ipcRenderer.send('generate-pdf'),
+});

@@ -1,8 +1,24 @@
-# Visitor Tracking Backend Server
+# Visitor Tracking - Express Backend
 
-This directory contains the Node.js/Express backend API for the Visitor Tracking and Management System. It is responsible for handling all persistent data storage (SQLite), processing administrative actions, and serving visitor data.
+The core engine of the application, handling data persistence, image storage, and system health.
 
-In the desktop application, this server is **launched by the Electron Main Process**.
+## 💾 Data Management
+* **Database:** SQLite3 (`database.db`).
+* **Integrity:** On every startup, the server runs `PRAGMA integrity_check`. If corruption is detected, it automatically restores from the latest backup.
+* **Backups:** Automated daily backups are stored in the `/backups` folder with a 7-day retention policy.
+* **Compliance:** Automated data cleanup routines ensure old visit records are handled according to policy.
+
+## 📝 Logging & Monitoring
+* **Winston Logger:** Rotating log files are stored in `/logs`.
+* **Sentry:** Integrated for both the Node.js process and the Electron Main process.
+* **Audit Logs:** Tracks sign-ins, sign-outs, and system errors for administrative review.
+
+## 🔐 Configuration (`config.json`)
+The server reads settings from the system's UserData folder:
+- `PORT`: Preferred port (defaults to 3001).
+- `ADMIN_PASSWORD_1`: History/Export access.
+- `ADMIN_PASSWORD_2`: Unban permissions.
+- `SENTRY_DSN`: Remote error tracking key.
 
 ***
 
@@ -14,14 +30,6 @@ Ensure you are in the `/server` directory if installing dependencies specific to
 
 ```bash
 npm install
-Environment Variables
-The server relies on environment variables for configuration and security. Create a file named .env in this directory and define the following variables:
-
-PORT: The port on which the Express server will run (e.g., 3001). This is used by the Electron Main Process to know where to load the UI.
-
-ADMIN_PASSWORD: The secret password required to authorize sensitive actions (e.g., BAN, UNBAN).
-
-CLIENT_URL: (NOTE: This is not strictly required in Electron Approach A) since the client is served from the same localhost:PORT. You may omit or set it to http://localhost:3001.
 
 Database
 This application uses a file-based SQLite3 database. The file is located at server/db/visitors.db.
