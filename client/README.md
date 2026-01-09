@@ -7,11 +7,14 @@ This file needs significant updating to remove references to the separate `npm r
 
 This directory contains the frontend client built with **React and Vite**, styled using **Tailwind CSS**. This application is responsible for the user interface and handling all necessary API calls to the embedded backend server.
 
-When running as an Electron desktop application, this client is served as static files by the Express backend.
 
-***
+This is the React-based user interface. In production, it is served as a static build by the Express backend.
 
-### 🚀 Local Development Setup
+## 🛠 Features
+* **Live Search:** Debounced visitor lookup to prevent duplicate profiles.
+* **Context Bridge:** Uses `window.apiConfig` to securely communicate with the Electron Main process.
+* **Error Boundary:** Catches UI crashes and reports them to the local backend log files.
+* **Dynamic Base URL:** Automatically connects to the backend via the port provided by the Electron bridge.
 
 #### 1. Prerequisites & Installation
 

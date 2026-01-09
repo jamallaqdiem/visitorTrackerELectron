@@ -6,21 +6,55 @@
   "scripts": {
     "start": "npm run electron-dev",
     "electron-dev": "electron .",
+    "install-all": "npm install && cd server && npm install && cd ../client && npm install",
+    "rebuild:sqlite": "electron-rebuild -f -w sqlite3 -p ./server",
     "build:client": "cd client && npm run build",
-    "rebuild:electron": "electron-rebuild -f -w",
-    "package:win": "electron-builder --win",
-    "package:linux": "electron-builder --linux"
+    "package:win": "npm run build:client && electron-builder --win",
+    "package:linux": "npm run build:client && electron-builder --linux",
+    "package:mac": "npm run build:client && electron-builder --mac",
+    "test": "jest --detectOpenHandles",
+    "test:watch": "jest --watchAll",
+    "test:coverage": "jest --coverage"
+  },
+  "build": {
+    "appId": "com.salvationarmy.visitortracker",
+    "productName": "VisitorTracker",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "linux": {
+      "target": "AppImage",
+      "category": "Office"
+    },
+    "mac": {
+      "category": "public.app-category.business",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "extendInfo": {
+        "NSCameraUsageDescription": "This app needs access to the camera to take visitor photos."
+      }
+    }
   },
   "keywords": [
     "electron",
     "react",
     "node"
   ],
-  "author": "",
+  "author": "Salvation Army Project",
   "license": "ISC",
   "devDependencies": {
     "electron": "^39.2.3",
     "electron-builder": "^24.0.0",
     "electron-rebuild": "^3.0.0"
+  },
+  "dependencies": {
+    "@sentry/electron": "^7.5.0",
+    "winston": "^3.19.0"
   }
 }

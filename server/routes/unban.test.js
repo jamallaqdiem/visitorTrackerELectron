@@ -1,95 +1,103 @@
 const request = require("supertest");
 const express = require("express");
 const sqlite3 = require("sqlite3").verbose();
-const createUnbanVisitorRouter = require("./unban");
+const createUnbanRouter = require("./unban");
 
-// Mock the master password from the environment for testing
-process.env.MASTER_PASSWORD = "test_password";
+let mockDb;
+let app;
+let loggerMock;
 
-// Mock the database for testing
-const mockDb = new sqlite3.Database(':memory:');
-mockDb.serialize(() => {
-  mockDb.run(`CREATE TABLE visitors (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    first_name TEXT,
-    is_banned BOOLEAN DEFAULT 0
-  )`);
-});
+// The password defined here will be passed into the router
+const TEST_ADMIN_PASSWORD = "test_password_123";
 
-// Create a mock Express app to test the router
-const app = express();
-app.use(express.json());
-app.use("/", createUnbanVisitorRouter(mockDb));
+beforeAll((done) => {
+    // Initialize in-memory database for fast testing
+    mockDb = new sqlite3.Database(':memory:');
+    
+    // Create a mock logger with all required methods
+    loggerMock = { 
+        info: jest.fn(), 
+        warn: jest.fn(), 
+        error: jest.fn() 
+    };
 
-// Clean up the test database after each test
-afterEach(async () => {
-  await new Promise((resolve, reject) => {
-    mockDb.run(`DELETE FROM visitors`, (err) => {
-      if (err) return reject(err);
-      resolve();
+    mockDb.serialize(() => {
+        mockDb.run(
+            `CREATE TABLE visitors (
+                id INTEGER PRIMARY KEY, 
+                first_name TEXT, 
+                is_banned INTEGER DEFAULT 0
+            )`, 
+            done
+        );
     });
-  });
+
+    app = express();
+    app.use(express.json());
+    
+    app.use("/", createUnbanRouter(mockDb, loggerMock, TEST_ADMIN_PASSWORD));
 });
 
-// Close the database connection after all tests
+afterEach((done) => {
+    // Clean up the database between tests
+    mockDb.run("DELETE FROM visitors", () => {
+        jest.clearAllMocks();
+        done();
+    });
+});
+
 afterAll((done) => {
-  mockDb.close((err) => {
-    if (err) console.error(err.message);
-    done();
-  });
+    mockDb.close(done);
 });
 
 describe('POST /unban-visitor/:id', () => {
-  test('should successfully unban a visitor with the correct password', async () => {
-    // Insert a sample banned visitor
-    const visitorId = await new Promise((resolve, reject) => {
-      mockDb.run(`INSERT INTO visitors (first_name, is_banned) VALUES ('Jamal', 1)`, function(err) {
-        if (err) return reject(err);
-        resolve(this.lastID);
-      });
+    
+    test('should successfully unban with correct password', async () => {
+        // Setup: Insert a banned visitor
+        await new Promise(resolve => 
+            mockDb.run("INSERT INTO visitors (id, first_name, is_banned) VALUES (1, 'John', 1)", resolve)
+        );
+
+        const response = await request(app)
+            .post('/unban-visitor/1')
+            .send({ password: TEST_ADMIN_PASSWORD });
+
+        expect(response.status).toBe(200);
+        expect(response.body.message).toContain("successfully");
+        expect(loggerMock.info).toHaveBeenCalledWith(expect.stringContaining("unbanned"));
+
+        // Verify changes in DB
+        const row = await new Promise(res => 
+            mockDb.get("SELECT is_banned FROM visitors WHERE id = 1", (err, r) => res(r))
+        );
+        expect(row.is_banned).toBe(0);
     });
 
-    const response = await request(app)
-      .post(`/unban-visitor/${visitorId}`)
-      .send({ password: "test_password" });
+    test('should return 403 for incorrect password', async () => {
+        const response = await request(app)
+            .post('/unban-visitor/1')
+            .send({ password: "wrong_password" });
 
-    expect(response.status).toBe(200);
-    expect(response.body).toHaveProperty('message', `Visitor has been unbanned successfully.`);
-
-    // Verify the visitor's status in the database
-    const visitor = await new Promise((resolve, reject) => {
-      mockDb.get(`SELECT is_banned FROM visitors WHERE id = ?`, [visitorId], (err, row) => {
-        if (err) return reject(err);
-        resolve(row);
-      });
-    });
-    expect(visitor.is_banned).toBe(0);
-  });
-
-  test('should return 403 for an incorrect password', async () => {
-    // Insert a sample banned visitor
-    const visitorId = await new Promise((resolve, reject) => {
-      mockDb.run(`INSERT INTO visitors (first_name, is_banned) VALUES ('Jamal', 1)`, function(err) {
-        if (err) return reject(err);
-        resolve(this.lastID);
-      });
+        expect(response.status).toBe(403);
+        expect(response.body.message).toBe("Incorrect password.");
+        expect(loggerMock.warn).toHaveBeenCalled();
     });
 
-    const response = await request(app)
-      .post(`/unban-visitor/${visitorId}`)
-      .send({ password: "wrong_password" });
+    test('should return 404 if ID does not exist', async () => {
+        const response = await request(app)
+            .post('/unban-visitor/999')
+            .send({ password: TEST_ADMIN_PASSWORD });
 
-    expect(response.status).toBe(403);
-    expect(response.body).toHaveProperty('message', 'Incorrect password.');
-  });
+        expect(response.status).toBe(404);
+        expect(response.body.message).toBe("Visitor not found.");
+        expect(loggerMock.warn).toHaveBeenCalled();
+    });
 
-  test('should return 404 for a non-existent visitor ID', async () => {
-    const nonExistentId = 999;
-    const response = await request(app)
-      .post(`/unban-visitor/${nonExistentId}`)
-      .send({ password: "test_password" }); // Correct password but no ID
+    test('should return 403 if password is missing from request body', async () => {
+        const response = await request(app)
+            .post('/unban-visitor/1')
+            .send({}); // Sending empty body
 
-    expect(response.status).toBe(404);
-    expect(response.body).toHaveProperty('message', 'Visitor not found.');
-  });
+        expect(response.status).toBe(403);
+    });
 });

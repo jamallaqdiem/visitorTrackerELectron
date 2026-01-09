@@ -1,28 +1,39 @@
 const path = require('path');
-// Import dotenv to load the PORT variable from the /server/.env file
-require('dotenv').config({ path: path.join(__dirname, '.env') }); 
-
-// Import the Express app instance exported from server.js
-const app = require('./server'); 
-const PORT = process.env.PORT || 3001; // Use the port defined in .env or default
+const { app, initializeServer } = require('./server'); 
 
 /**
  * Starts the Express server and returns the port it is listening on.
- * @returns {Promise<number>} The port number.
+ * @param {string} userDataPath - Path provided by Electron for data storage
+ * @returns {Promise<number>} The port number actually used.
  */
-function startServer(userDataPath) {
-  return new Promise((resolve, reject) => {
-    app.set('userDataPath', userDataPath);
+
+async function startServer(userDataPath) {
+  return new Promise(async (resolve, reject) => {
     try {
-      // Use the imported app instance to start listening
-      const server = app.listen(PORT, () => {
-        console.log(`Express server running on http://localhost:${PORT}`);
-        resolve(PORT);
+      // 1. Initialize EVERYTHING (DB, Config, Routes)
+      // This ensures we have the config before starting the listener
+      const config = await initializeServer(userDataPath);
+      
+      const logger = app.get('logger'); 
+      const targetPort = config.PORT || 3001;
+
+      const server = app.listen(targetPort, () => {
+        if (logger && typeof logger.info === 'function') {
+          logger.info(`🚀 Electron Backend successfully started on port: ${targetPort}`);
+        } else {
+          console.log(`🚀 Electron Backend started on port: ${targetPort}`);
+        }
+        resolve(targetPort);
       });
-      // Handle server errors during startup
+
       server.on('error', (err) => {
-        reject(err);
+        if (err.code === 'EADDRINUSE') {
+          reject(new Error(`Port ${targetPort} is occupied.`));
+        } else {
+          reject(err);
+        }
       });
+
     } catch (error) {
       console.error('Failed to initialize Express server:', error);
       reject(error);

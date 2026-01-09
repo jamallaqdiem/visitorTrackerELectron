@@ -1,57 +1,127 @@
+const { app, BrowserWindow, ipcMain, dialog, Menu, shell } = require("electron");
+const createLogger = require("./server/logger");
+const path = require("path");
+const fs = require("fs");
+const Sentry = require("@sentry/electron/main");
+const { startServer } = require("./server/startServer");
 
-const path = require('path');
-const { startServer } = require('./server/startServer');
-const { app, BrowserWindow, ipcMain } = require('electron'); 
 let mainWindow;
-let userDataPath; // path to store .db and uplaods folder outside of .exe 
-const createWindow = async () => {
-  userDataPath = app.getPath('userData');
-  // 1. START THE NODE.JS SERVER and WAIT for the port
-  const port = await startServer(userDataPath); 
+const userDataPath = app.getPath("userData");
 
-  // 2. Create the Browser Window
-  mainWindow = new BrowserWindow({
-    width: 1024,
-    height: 768,
-    webPreferences: {
-      // Standard security settings for loading an external (localhost) resource
-      nodeIntegration: false,
-      contextIsolation: true, 
-      preload: path.join(__dirname, 'preload.js'), 
-    },
-  });
+// 1. Ensure the directory exists immediately
+if (!fs.existsSync(userDataPath)) {
+  fs.mkdirSync(userDataPath, { recursive: true });
+}
 
-  // 3. LOAD THE WINDOW from the server's local address
-  mainWindow.loadURL(`http://localhost:${port}`);
-
-  // Open the DevTools only in development 
-  if (!app.isPackaged) {
-    mainWindow.webContents.openDevTools();
+// 2. EARLY INITIALIZATION (Sentry & Config)
+const configPath = path.join(userDataPath, "config.json");
+try {
+  if (fs.existsSync(configPath)) {
+    const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    if (config.SENTRY_DSN) {
+      Sentry.init({ dsn: config.SENTRY_DSN });
+    }
   }
+} catch (err) {
+  console.error("Main Process: Could not initialize Sentry", err);
+}
 
-  // Handle closing event
-  mainWindow.on('closed', () => {
-    mainWindow = null;
-  });
-};
+app.disableHardwareAcceleration();
 
-// Electron Lifecycle Handlers
-app.whenReady().then(createWindow);
+/**
+ * 3. PDF GENERATION HANDLER
+ * Intercepts the request from the frontend to generate a professional PDF.
+ * Saves to the system Downloads folder and opens it automatically.
+ */
+ipcMain.on("generate-pdf", async (event) => {
+  if (!mainWindow) return;
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
+  try {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const fileName = `Visitor_History_Report_${timestamp}.pdf`;
+    const pdfPath = path.join(app.getPath("downloads"), fileName);
+
+    const options = {
+      marginsType: 0, // No margins for full Tailwind design coverage
+      pageSize: 'A4',
+      printBackground: true, // Captures colors and table styling
+      landscape: true, // Horizontal layout is better for wide visitor tables
+    };
+
+    const data = await mainWindow.webContents.printToPDF(options);
+    
+    fs.writeFile(pdfPath, data, (error) => {
+      if (error) {
+        console.error("PDF Save Error:", error);
+        return;
+      }
+      // Open the file immediately so the user can see/print it
+      shell.openPath(pdfPath);
+      console.log(`PDF successfully saved to: ${pdfPath}`);
+    });
+  } catch (err) {
+    console.error("Failed to generate PDF:", err);
+  }
+});
+
+const createWindow = async () => {
+  const logDir = path.join(userDataPath, "logs");
+  if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+
+  const logger = createLogger(logDir);
+  Menu.setApplicationMenu(null); // Keep UI clean for the Salvation Army
+
+  try {
+    logger.info("[Main Process] Starting backend server...");
+    const port = await startServer(userDataPath);
+    logger.info(`[Main Process] Backend ready on port ${port}.`);
+
+    // Handle port request from Frontend
+    ipcMain.handle("get-port", () => port);
+
+    mainWindow = new BrowserWindow({
+      width: 1200, // Slightly wider for better table visibility
+      height: 850,
+      backgroundColor: "#ffffff",
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        preload: path.join(__dirname, "preload.js"),
+      },
+    });
+
+    const isDev = !app.isPackaged;
+
+    if (isDev) {
+      mainWindow.loadURL("http://localhost:5173");
+    } else {
+      // Robust pathing for the production .EXE
+      const indexPath = path.join(__dirname, "dist", "index.html");
+      if (fs.existsSync(indexPath)) {
+        mainWindow.loadFile(indexPath);
+      } else {
+        // Fallback for different build structures
+        mainWindow.loadFile(path.join(__dirname, "../dist/index.html"));
+      }
+    }
+
+    mainWindow.on("closed", () => {
+      mainWindow = null;
+    });
+  } catch (error) {
+    Sentry.captureException(error);
+    logger.error("[Main Process] FATAL ERROR during startup:", error);
+    dialog.showErrorBox("Startup Error", `Server failed: ${error.message}`);
     app.quit();
   }
+};
+
+app.whenReady().then(createWindow);
+
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") app.quit();
 });
 
-app.on('activate', () => {
-  if (mainWindow === null) {
-    createWindow();
-  }
-});
-
-// --- IPC HANDLERS ---
-// Listener for the 'app:close' signal sent from the preload script/renderer
-ipcMain.on('app:close', () => {
+ipcMain.on("app:close", () => {
   app.quit();
 });

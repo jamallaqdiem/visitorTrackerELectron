@@ -1,13 +1,16 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import VisitorsDashboard from "./components/VisitorsDashboard";
 import VisitorDetailsForm from "./components/VisitorDetailsForm";
 import VisitorRegistrationForm from "./components/VisitorRegistrationForm";
 import PasswordModal from "./components/PasswordModal";
 import RecordMissedVisitModal from "./components/RecordMissedVisitModal";
 import HistoryDashboard from "./components/VisitHistory";
-import SalvationArmyLogo from '../Salvation-Army-logo.png';
+import { logClientError } from "./components/utils/error_logging";
+import SystemStatusWidget from './components/SystemStatusWidget';
+import TutorialModal from './components/TutorialModal';
+import ContractorHandoverModal from "./components/ContractorHandoverModal";
+import { HelpCircle } from 'lucide-react';
 
-const API_BASE_URL = "http://localhost:3001";
 
 // Initial state for the registration form
 const initialRegistrationForm = {
@@ -24,6 +27,7 @@ const initialRegistrationForm = {
 };
 
 function App() {
+  
   // --- Global State & Loading ---
   const [visitors, setVisitors] = useState([]);
   const [searchResults, setSearchResults] = useState([]);
@@ -31,10 +35,17 @@ function App() {
   const [error, setError] = useState(null);
   const [loadingRegistration, setLoadingRegistration] = useState(false);
 
+  const [showTutorial, setShowTutorial] = useState(false);
+  const [visitorToSignOut, setVisitorToSignOut] = useState(null);
   // --- UI/Mode State ---
   const [searchTerm, setSearchTerm] = useState("");
   const [showRegistration, setShowRegistration] = useState(false);
   const [selectedVisitor, setSelectedVisitor] = useState(null);
+
+    // --- Record Missed Visit Modal State ---
+  const [showMissedVisitModal, setShowMissedVisitModal] = useState(false);
+  const [missedEntryTime, setMissedEntryTime] = useState("");
+
 
   // --- Registration Form State ---
   const [regFormData, setRegFormData] = useState(initialRegistrationForm);
@@ -56,6 +67,19 @@ function App() {
     direction: "descending",
   });
 
+   // --- Modal Context State (Tracks the pending action) ---
+  const [modalContext, setModalContext] = useState({
+    type: null, 
+    visitorId: null, 
+    title: "",
+    description: "",
+    submitText: "",
+    submitColor: "bg-green-600 hover:bg-green-700",
+  });
+
+  // Debounce for live search
+  const debounceTimeoutRef = useRef(null);
+
   // --- Visitor Details/Update Form State ---
   const [editFormData, setEditFormData] = useState({});
   const [isDetailsAgreementChecked, setIsDetailsAgreementChecked] = useState(false);
@@ -68,23 +92,35 @@ function App() {
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [password, setPassword] = useState(""); // Universal password input state
   const [showPassword, setShowPassword] = useState(false); // Universal show/hide password state
+const [isReady, setIsReady] = useState(false);
 
-  // --- Modal Context State (Tracks the pending action) ---
-  const [modalContext, setModalContext] = useState({
-    type: null, 
-    visitorId: null, 
-    title: "",
-    description: "",
-    submitText: "",
-    submitColor: "bg-green-600 hover:bg-green-700",
-  });
+useEffect(() => {
+  const detectPort = async () => {
+    if (window.apiConfig && window.apiConfig.getPort) {
+      try {
+        const port = await window.apiConfig.getPort();
+        window.API_BASE_URL = `http://localhost:${port}`;
+        
+        // Small delay to ensure the Node.js server 
 
-  // --- Record Missed Visit Modal State ---
-  const [showMissedVisitModal, setShowMissedVisitModal] = useState(false);
-  const [missedEntryTime, setMissedEntryTime] = useState("");
+        setTimeout(() => {
+          setIsReady(true);
+        }, 500); 
 
-  // Debounce for live search
-  const debounceTimeoutRef = useRef(null);
+      } catch (err) {
+        console.error("Failed to get port:", err);
+        window.API_BASE_URL = "http://localhost:3001";
+        setIsReady(true);
+      }
+    } else {
+      window.API_BASE_URL = "http://localhost:3001";
+      setIsReady(true);
+    }
+  };
+
+  detectPort();
+}, []);
+ 
 
   // Helper function for showing a transient message
   const showNotification = (msg, type = "success") => {
@@ -125,32 +161,44 @@ function App() {
 
   // --- API: Fetch Currently Signed-In Visitors ---
   const fetchVisitors = useCallback(async () => {
+    // check if is ready first
+     if (!window.API_BASE_URL || !isReady) return;
+
     // Only show loading indicator initially or when explicitly triggered
     setIsLoading(true);
     setError(null);
+  
     try {
-      const response = await fetch(`${API_BASE_URL}/visitors`);
+      const response = await fetch(`${window.API_BASE_URL}/visitors`);
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       const data = await response.json();
       setVisitors(data);
     } catch (err) {
+      logClientError(
+        err, 
+        { 
+          // Include relevant context data for debugging
+          endpoint: '/visitors'
+        }, 
+        'API_VISITORS_FAIL'
+      );
       console.error("Error fetching visitors:", err);
       setError("Failed to load active visitors.");
       setVisitors([]);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [isReady]);
 
-  // EFFECT: Auto-refresh "Who is On Site" table every 5 seconds
+  // EFFECT: Auto-refresh "Who is On Site" table every 10 seconds
   useEffect(() => {
     // Fetch immediately on mount
     fetchVisitors();
 
-    // Set up interval for refreshing every 5000ms
-    const intervalId = setInterval(fetchVisitors, 5000);
+    // Set up interval for refreshing every 1000ms
+    const intervalId = setInterval(fetchVisitors, 10000);
 
     // Clean up interval on unmount
     return () => clearInterval(intervalId);
@@ -172,7 +220,7 @@ function App() {
 
     try {
       const encodedSearchTerm = encodeURIComponent(trimmedTerm);
-      const url = `${API_BASE_URL}/visitor-search?name=${encodedSearchTerm}`;
+      const url = `${window.API_BASE_URL}/visitor-search?name=${encodedSearchTerm}`;
 
       const response = await fetch(url);
       const data = await response.json();
@@ -190,6 +238,15 @@ function App() {
         setShowRegistration(false);
       }
     } catch (err) {
+      logClientError(
+        err, 
+        { 
+          // Include relevant context data for debugging
+          searchTerm: trimmedTerm,
+          endpoint: '/visitor-search'
+        }, 
+        'API_VISITORS_FAIL'
+      );
       console.error("Search Error:", err.message);
       showNotification(`Search Failed: ${err.message}`, "error");
     } finally {
@@ -197,20 +254,18 @@ function App() {
     }
   }, []);
 
-  const handleSearchInput = useCallback((e) => {
+ const handleSearchInput = useCallback((e) => {
     const term = e.target.value;
     setSearchTerm(term);
 
-    // Clear previous timeout
     if (debounceTimeoutRef.current) {
       clearTimeout(debounceTimeoutRef.current);
     }
 
-    // Set a new timeout
     debounceTimeoutRef.current = setTimeout(() => {
       handleVisitorSearch(term);
     }, 600);
-  });
+  }, [handleVisitorSearch]);
 
   // --- Visitor Selection Handler ---
   const handleVisitorSelect = (visitor) => {
@@ -322,7 +377,7 @@ function App() {
     }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/register-visitor`, {
+      const response = await fetch(`${window.API_BASE_URL}/register-visitor`, {
         method: "POST",
         body: formData,
       });
@@ -347,6 +402,15 @@ function App() {
 
       fetchVisitors(); // Refresh the list
     } catch (err) {
+       logClientError(
+        err, 
+        { 
+          // Include relevant context data for debugging
+          visitorName: `${regFormData.firstName} ${regFormData.lastName}`,
+          endpoint: '/register-visitor'
+        }, 
+        'API_REGISTRATION_FAIL'
+      );
       console.error("Registration Error:", err.message);
       showNotification(`Registration Failed: ${err.message}`, "error");
     } finally {
@@ -380,7 +444,7 @@ function App() {
     }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/login`, {
+      const response = await fetch(`${window.API_BASE_URL}/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),
@@ -398,6 +462,16 @@ function App() {
         fetchVisitors();
       }, 3000);
     } catch (err) {
+      logClientError(
+        err, 
+        { 
+          // Include relevant context data for debugging
+          visitorName: `${selectedVisitor.first_name} ${selectedVisitor.last_name}`,
+          visitorId: id,
+          endpoint: '/login'
+        }, 
+        'API_LOGIN_FAIL'
+      );
       console.error("Login Error:", err.message);
       showNotification(`Login Failed: ${err.message}`, "error");
     }
@@ -443,7 +517,7 @@ function App() {
     };
 
     try {
-      const response = await fetch(`${API_BASE_URL}/update-visitor-details`, {
+      const response = await fetch(`${window.API_BASE_URL}/update-visitor-details`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(dataToSend),
@@ -461,42 +535,64 @@ function App() {
         fetchVisitors();
       }, 2000);
     } catch (err) {
+       logClientError(
+        err, 
+        { 
+          // Include relevant context data for debugging
+          visitorName: `${selectedVisitor.first_name} ${selectedVisitor.last_name}`,
+          visitorId: selectedVisitor.id,
+          endpoint: '/update-visitor-details'
+        }, 
+        'API_UPDATE_VISITOR_DETAILS_FAIL'
+      );
       console.error("Update & Login Error:", err.message);
       showNotification(`Update & sign Failed: ${err.message}`, "error");
     }
   };
-
+  
   // 3.Handle Ban Visitor
-  const handleBan = async (id) => {
-    if (!id) return;
-    const isCurrentlySignedIn = visitors.some(
-      (activeVisitor) => activeVisitor.id === id
-    );
-    try {
-      const response = await fetch(`${API_BASE_URL}/ban-visitor/${id}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
+const handleBan = async (id) => {
+  if (!id) return;
+  
+  const isCurrentlySignedIn = visitors.some(
+    (activeVisitor) => activeVisitor.id === id
+  );
 
-      const result = await response.json();
+  try {
+    const response = await fetch(`${window.API_BASE_URL}/ban-visitor`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ visitor_id: id }), 
+    });
 
-      if (!response.ok) {
-        throw new Error(result.message || "Failed to ban visitor.");
-      }
-      if (isCurrentlySignedIn) {
-        await handleVisitorLogout(id);
-      }
-      showNotification(result.message, "error");
-      setSelectedVisitor((prev) => (prev ? { ...prev, is_banned: 1 } : null)); // Update local state
-      setTimeout(() => {
-        handleCancelAction();
-        fetchVisitors();
-      }, 3000);
-    } catch (err) {
-      console.error("Ban Error:", err.message);
-      showNotification(`Ban Failed: ${err.message}`, "error");
+    // Handle the response 
+    const result = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(result.message || "Failed to ban visitor.");
     }
-  };
+
+    if (isCurrentlySignedIn) {
+      await handleVisitorLogout(id);
+    }
+
+    showNotification(result.message, "error");
+    setSelectedVisitor((prev) => (prev ? { ...prev, is_banned: 1 } : null));
+
+    setTimeout(() => {
+      handleCancelAction();
+      fetchVisitors();
+    }, 3000);
+
+  } catch (err) {
+    logClientError(err, { 
+        visitorName: `${selectedVisitor?.first_name} ${selectedVisitor?.last_name}`,
+        visitorId: id,
+        endpoint: '/ban-visitor'
+      }, 'API_BAN_VISITOR_FAIL');
+    showNotification(`Ban Failed: ${err.message}`, "error");
+  }
+};
 
   // The first function that will handle the unban password.
   const handleUnbanClick = (id) => {
@@ -542,7 +638,7 @@ function App() {
     if (currentAction === "unban") {
       try {
         const response = await fetch(
-          `${API_BASE_URL}/unban-visitor/${currentId}`,
+          `${window.API_BASE_URL}/unban-visitor/${currentId}`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -560,6 +656,16 @@ function App() {
         setSelectedVisitor((prev) => (prev ? { ...prev, is_banned: 0 } : null));
         fetchVisitors();
       } catch (err) {
+        logClientError(
+        err, 
+        { 
+          // Include relevant context data for debugging
+          visitorName: `${selectedVisitor.first_name} ${selectedVisitor.last_name}`,
+          visitorId: currentId,
+          endpoint: '/unban-visitor'
+        }, 
+        'API_UNBAN_FAIL'
+      );
         console.error("Unban Error:", err.message);
         showNotification(`Unban Failed: ${err.message}`, "error");
         setPassword("");
@@ -570,7 +676,7 @@ function App() {
     else if (currentAction === "viewHistory") {
       //  Password check for history data
       try {
-        const response = await fetch(`${API_BASE_URL}/authorize-history`, {
+        const response = await fetch(`${window.API_BASE_URL}/authorize-history`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ password }),
@@ -589,6 +695,15 @@ function App() {
         showNotification("History access granted. Loading data...", "blue");
         fetchHistoryRecords("", "", "");
       } catch (err) {
+        logClientError(
+        err, 
+        { 
+          // Include relevant context data for debugging
+          action: 'AUTHORIZE_HISTORY_VIEW',
+          endpoint: '/authorize-history'
+        }, 
+        'API_AUTHORIZE_HISTORY_FAIL'
+      );
         console.error("History Access Error:", err.message);
         showNotification(`Access Denied: ${err.message}`, "error");
         setPassword("");
@@ -637,7 +752,7 @@ function App() {
     setShowMissedVisitModal(false);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/record-missed-visit`, {
+      const response = await fetch(`${window.API_BASE_URL}/record-missed-visit`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -657,33 +772,62 @@ function App() {
         handleCancelAction(); // Go back to the dashboard after success
       }, 3000);
     } catch (err) {
+       logClientError(
+        err, 
+        { 
+          // Include relevant context data for debugging
+          visitorName: `${selectedVisitor.first_name} ${selectedVisitor.last_name}`,
+          visitorId:visitorId,
+          endpoint: '/record-missed-visit'
+        }, 
+        'API_RECORD_MISSED_VISIT_FAIL'
+      );
       console.error("Missed Visit Error:", err.message);
       showNotification(`${err.message}`, "error");
     }
   };
 
 
-  // 6. Sign Out (From Dashboard)
-  const handleVisitorLogout = async (id) => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/exit-visitor/${id}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
+  // 6. Sign Out From Dashboard
+  // 1. This is what "Sign Out" button calls
+const handleVisitorLogout = (id) => {
+  const visitor = visitors.find(v => v.id === id);
+  
+  if (visitor?.type?.toLowerCase() === 'contractor') {
+    setVisitorToSignOut(id); // Opens the modal
+  } else {
+    executeApiLogout(id); // Regular logout
+  }
+};
+// 2.  what the Modal calls
+const confirmContractorExit = () => {
+  if (visitorToSignOut) {
+    executeApiLogout(visitorToSignOut);
+    setVisitorToSignOut(null); // Closes the modal
+  }
+};
+// 3.  The actual API logic
+const executeApiLogout = async (id) => {
+  const visitor = visitors.find(v => v.id === id);
+  try {
+    const response = await fetch(`${window.API_BASE_URL}/exit-visitor/${id}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
 
-      const result = await response.json();
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message || "Failed to sign out.");
 
-      if (!response.ok) {
-        throw new Error(result.message || "Failed to sign out visitor.");
-      }
-
-      showNotification(result.message, "success");
-      fetchVisitors();
-    } catch (err) {
-      console.error("Logout Error:", err.message);
-      showNotification(`Logout Failed: ${err.message}`, "error");
-    }
-  };
+    showNotification(result.message, "success");
+    fetchVisitors();
+  } catch (err) {
+    logClientError(err, { 
+      visitorName: visitor ? `${visitor.first_name} ${visitor.last_name}` : 'Unknown',
+      visitorId: id 
+    }, 'API_EXIT_VISITOR_FAIL');
+    showNotification(`Logout Failed: ${err.message}`, "error");
+  }
+};
 
   // --- HISTORY DATA LOGIC ---
 
@@ -715,10 +859,10 @@ function App() {
     setHistoryLoading(true);
 
     try {
-      const url = new URL(`${API_BASE_URL}/history`);
+      const url = new URL(`${window.API_BASE_URL}/history`);
       if (query) url.searchParams.append("query", query);
-      if (start) url.searchParams.append("endDate", start);
-      if (end) url.searchParams.append("endDate", end);
+      if (start) url.searchParams.append("start_date", start);
+      if (end) url.searchParams.append("end_date", end);
 
       const response = await fetch(url.toString());
 
@@ -755,6 +899,17 @@ function App() {
         "success"
       );
     } catch (e) {
+      logClientError(
+        e, 
+        { 
+          // Include relevant context data for debugging
+          query: query,
+          startDateFilter: start,
+          endDateFilter: end,
+          endpoint: '/history'
+        }, 
+        'API_HISTORY_FAIL'
+      );
       console.error("Error fetching history records:", e.message);
       showNotification(`Failed to fetch history: ${e.message}`, "error");
     } finally {
@@ -845,35 +1000,54 @@ function App() {
       "blue"
     );
   };
-
+  
   // Determine which view to show
   const showDashboard = !selectedVisitor && !showRegistration;
   const showHistoryView = showHistory && !selectedVisitor && !showRegistration;
   const sortedHistoryData = sortData(filteredHistoryData, sortConfig);
 
-  return (
+// 4. THE "GATE" 
+  if (!isReady) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-gray-50">
+         <p>Connecting to Salvation Army Database...</p>
+      </div>
+    );
+  }
+    return (
     <div className="font-sans min-h-screen bg-blue-200 text-gray-800 p-4 md:p-8 flex flex-col items-center">
+      
       <style>{`
       @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
       body { font-family: 'Inter', sans-serif; }
     `}</style>
       <script src="https://cdn.tailwindcss.com"></script>
+      
+{/*  Modal logic (onClose must be false) */}
+  {showTutorial && <TutorialModal onClose={() => setShowTutorial(false)} />}
+
+  {/* Added a Button to trigger the help */}
+  <button
+    onClick={() => setShowTutorial(true)}
+    className="absolute top-0 right-50 flex items-center gap-2 px-8 py-2 bg-white text-indigo-800 rounded-lg font-bold text-xs shadow-md hover:bg-indigo-50 border border-indigo-200 transition-all"
+  >
+    <HelpCircle size={16} />
+    Help Guide
+  </button>
 
       {/* Header */}
-      <div className="flex flex-col items-center w-full mb-8 relative">
-        <img
-      src={SalvationArmyLogo}
-      alt="The Salvation Army Red Shield Logo"
-      className="absolute left-0 top-0 w-28 h-28 object-contain print-show-logo"
-      // Fallback in case the image path is broken
-      onError={(e) => { e.target.onerror = null; e.target.src = 'https://placehold.co/96x96/DA251C/ffffff?text=TSA'; }}
-    />
+       <div className="flex flex-col items-center w-full mb-8 relative">
+          <img
+            src="Salvation-Army-logo.png"
+            alt="The Salvation Army Red Shield Logo"
+            className="absolute left-0 top-0 w-28 h-28 object-contain print-show-logo"
+            // Fallback in case the image path is broken
+            onError={(e) => { e.target.onerror = null; e.target.src = 'https://placehold.co/96x96/DA251C/ffffff?text=TSA'; }}
+          />
+        <div className="flex flex-col  pt-3">
         <h1 className="text-4xl font-extrabold text-blue-800 mb-2">
           The Salvation Army Social Services
         </h1>
-        <p className="text-lg text-blue-950 mb-4">
-          Catherine Booth House Visitors Tracking
-        </p>
         <button
           onClick={() => {
             const newState = !showHistory;
@@ -891,7 +1065,7 @@ function App() {
         >
           {showHistory ? "Show Dashboard" : "View Historical Data"}
         </button>
-
+      
         {/* Button Group for View Switching */}
         {!showHistory && !showRegistration && (
           <div className="flex min-w-[200px] justify-center mt-4">
@@ -914,8 +1088,9 @@ function App() {
             </button>
           </div>
         )}
+        </div>
       </div>
-
+      <div>
       <div className="w-full max-w-6xl mx-auto">
         {/* Dashboard View */}
         {!showRegistration && !showHistory && !selectedVisitor && (
@@ -1025,8 +1200,16 @@ function App() {
         setEntryTime={setMissedEntryTime}
         confirmAction={confirmRecordMissedVisit}
       />
+      <SystemStatusWidget />
+    
     </div>
+      <ContractorHandoverModal 
+      isOpen={!!visitorToSignOut} 
+      onConfirm={confirmContractorExit} 
+      onCancel={() => setVisitorToSignOut(null)} 
+    />
+  </div>
   );
-}
+  }
 
 export default App;

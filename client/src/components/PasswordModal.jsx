@@ -1,4 +1,4 @@
-import React from 'react';
+
 import { EyeIcon, EyeOffIcon } from './IconComponents';
 
 const PasswordModal = ({

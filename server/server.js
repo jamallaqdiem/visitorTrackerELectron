@@ -1,21 +1,103 @@
-require("dotenv").config();
+const { app: electronApp } = require("electron");
+const path = require("path");
+const fs = require("fs");
+const os = require("os");
+const Sentry = require("@sentry/node");
+
+/**
+ * 1. UNIVERSAL PATH LOGIC (Windows & macOS)
+ * Finds the correct folder for database, logs, and config.
+ */
+const getUniversalDataPath = () => {
+  // If running inside Electron, use the official system-standard path
+  if (electronApp) {
+    return electronApp.getPath("userData");
+  }
+
+  // Fallback for local Node.js development
+  const appName = "visitor-tracker-electron";
+  if (process.platform === "win32") {
+    return path.join(os.homedir(), "AppData", "Roaming", appName);
+  } else if (process.platform === "darwin") {
+    return path.join(os.homedir(), "Library", "Application Support", appName);
+  } else {
+    return path.join(os.homedir(), ".config", appName);
+  }
+};
+
+const userDataPath = getUniversalDataPath();
+const configPath = path.join(userDataPath, "config.json");
+
+// Ensure the data directory exists immediately
+if (!fs.existsSync(userDataPath)) {
+  fs.mkdirSync(userDataPath, { recursive: true });
+}
+
+/**
+ * 2. STARTUP ERROR CATCHER
+ * Saves fatal crashes to a local file in the AppData folder.
+ */
+process.on("uncaughtException", (err) => {
+  const errorLogPath = path.join(userDataPath, "startup-crash.log");
+  const errorMessage = `[${new Date().toISOString()}] CRASH: ${err.stack}\n`;
+
+  fs.appendFileSync(errorLogPath, errorMessage);
+
+  console.error("❌ THE APP CRASHED DURING STARTUP. Check startup-crash.log");
+  process.exit(1);
+});
+
+/**
+ * 3. CONFIG & SENTRY INITIALIZATION
+ */
+let config = {
+  SENTRY_DSN: "",
+  PORT: 3001,
+  ADMIN_PASSWORD_1: "",
+  ADMIN_PASSWORD_2: "",
+};
+
+try {
+  if (fs.existsSync(configPath)) {
+    const fileData = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    config = { ...config, ...fileData };
+  }
+} catch (e) {
+  console.error("⚠️ Error reading config:", e.message);
+}
+
+// Initialize Sentry ONLY if a DSN is provided in config.json
+if (config.SENTRY_DSN && config.SENTRY_DSN.trim() !== "") {
+  Sentry.init({
+    dsn: config.SENTRY_DSN,
+    tracesSampleRate: 1.0,
+  });
+  console.log("🚀 Sentry Monitoring initialized.");
+} else {
+  console.log("🔒 Privacy Mode: Sentry is disabled (No DSN in data folder).");
+}
+
+/**
+ * 4. MODULE IMPORTS
+ */
 const express = require("express");
 const sqlite3 = require("sqlite3").verbose();
 const cors = require("cors");
 const bodyParser = require("body-parser");
-const path = require("path");
-const fs = require("fs");
 const multer = require("multer");
-const app = express();
-const PORT = 3001;
-const CLIENT_BUILD_PATH = path.join(__dirname, "..", "client", "dist");
-const { 
-  checkDatabaseIntegrity, 
-  restoreFromBackup, 
-  createBackup 
-} = require("./db_management");
 
+// Internal Module Imports
+const { updateStatus, getStatus } = require("./status_tracker");
+const {
+  checkDatabaseIntegrity,
+  restoreFromBackup,
+  createBackup,
+} = require("./db_management");
+const createLogger = require("./logger");
 const runDataComplianceCleanup = require("./routes/clean_data");
+
+// Route Imports
+const createAuditLogsRouter = require("./routes/audit_logs");
 const createRegistrationRouter = require("./auth/registration");
 const createVisitorsRouter = require("./routes/visitors");
 const createLoginRouter = require("./routes/login");
@@ -27,227 +109,132 @@ const createSearchVisitorsRouter = require("./routes/search_visitors");
 const createMissedVisitRouter = require("./routes/record_missed_visit");
 const createHistoryRouter = require("./routes/display_history");
 
-// Global variables to hold initialized resources (db and upload)
-let db = null;
-let upload = null;
-let UPLOADS_DIR_PATH = null; // Store the persistent uploads path here
+// SQL Table Definitions
+const visitorsSql = `CREATE TABLE IF NOT EXISTS visitors (id INTEGER PRIMARY KEY, first_name TEXT NOT NULL, last_name TEXT NOT NULL, photo_path TEXT, is_banned BOOLEAN DEFAULT 0)`;
+const visitsSql = `CREATE TABLE IF NOT EXISTS visits (id INTEGER PRIMARY KEY, visitor_id INTEGER NOT NULL, entry_time TEXT NOT NULL, exit_time TEXT, known_as TEXT, address TEXT, phone_number TEXT, unit TEXT NOT NULL, reason_for_visit TEXT, type TEXT NOT NULL, company_name TEXT, mandatory_acknowledgment_taken BOOLEAN DEFAULT 0, FOREIGN KEY (visitor_id) REFERENCES visitors(id))`;
+const dependentsSql = `CREATE TABLE IF NOT EXISTS dependents (id INTEGER PRIMARY KEY, full_name TEXT NOT NULL, age INTEGER NOT NULL, visit_id INTEGER NOT NULL, FOREIGN KEY (visit_id) REFERENCES visits(id))`;
+const auditLogsSql = `CREATE TABLE IF NOT EXISTS audit_logs (id INTEGER PRIMARY KEY, event_name TEXT NOT NULL, timestamp TEXT NOT NULL, status TEXT NOT NULL, profiles_deleted INTEGER, visits_deleted INTEGER, dependents_deleted INTEGER)`;
 
-// Define SQL commands
-const visitorsSql = `CREATE TABLE IF NOT EXISTS visitors (
-  id INTEGER PRIMARY KEY,
-  first_name TEXT NOT NULL,
-  last_name TEXT NOT NULL,
-  photo_path TEXT,
-  is_banned BOOLEAN DEFAULT 0
-)`;
+const app = express();
+let logger = console; // Placeholder until createLogger runs
 
-const visitsSql = `CREATE TABLE IF NOT EXISTS visits (
-  id INTEGER PRIMARY KEY,
-  visitor_id INTEGER NOT NULL,
-  entry_time TEXT NOT NULL,
-  exit_time TEXT,
-  known_as TEXT,
-  address TEXT,
-  phone_number TEXT,
-  unit TEXT NOT NULL,
-  reason_for_visit TEXT,
-  type TEXT NOT NULL,
-  company_name TEXT,
-  mandatory_acknowledgment_taken BOOLEAN DEFAULT 0,
-  FOREIGN KEY (visitor_id) REFERENCES visitors(id)
-)`;
-
-const dependentsSql = `CREATE TABLE IF NOT EXISTS dependents (
-  id INTEGER PRIMARY KEY,
-  full_name TEXT NOT NULL,
-  age INTEGER NOT NULL,
-  visit_id INTEGER NOT NULL,
-  FOREIGN KEY (visit_id) REFERENCES visits(id)
-)`;
-
-const auditLogsSql = `CREATE TABLE IF NOT EXISTS audit_logs (
-  id INTEGER PRIMARY KEY,
-  event_name TEXT NOT NULL,
-  timestamp TEXT NOT NULL,
-  status TEXT NOT NULL,
-  profiles_deleted INTEGER,
-  visits_deleted INTEGER,
-  dependents_deleted INTEGER
-)`;
-// --- End SQL Commands ---
-
-// --- INITIALIZATION FUNCTION ---
 /**
- * Initializes the database and Multer instance using the persistent userDataPath.
- * This is called from startServer.js after the path has been set.
+ * 5. INITIALIZATION FUNCTION
  */
-const initializeServer = async() => {
-  // Retrieve the persistent data path set by startServer.js
-  const userDataPath =
-    app.get("userDataPath") || path.join(__dirname, "..", "..", "data"); // Define Paths
-  const DB_FILE_PATH = path.join(userDataPath, "database.db");
-  UPLOADS_DIR_PATH = path.join(userDataPath, "uploads"); // Set the global path variable // Ensure the uploads directory exists
+const initializeServer = async (passedPath) => {
+  const targetPath = passedPath || userDataPath;
 
-  if (!fs.existsSync(UPLOADS_DIR_PATH)) {
-    fs.mkdirSync(UPLOADS_DIR_PATH, { recursive: true });
-  } 
+  // Ensure system subfolders exist
+  ["uploads", "logs", "backups"].forEach((dir) => {
+    const fullPath = path.join(targetPath, dir);
+    if (!fs.existsSync(fullPath)) fs.mkdirSync(fullPath, { recursive: true });
+  });
 
-  // ---  AUTOMATED RECOVERY LOGIC (STEP 1: CHECK & RESTORE) ---
-  let isDatabaseClean = await checkDatabaseIntegrity(DB_FILE_PATH);
-  const maxRestoreAttempts = 2; // Allow one restore attempt
-  let attempt = 1;
-  
-  while (!isDatabaseClean && attempt <= maxRestoreAttempts) {
-      console.warn(` Database check failed (Attempt ${attempt}). Attempting automatic recovery...`);
-      
-      const restoreSuccess = restoreFromBackup(userDataPath);
-      
-      if (restoreSuccess) {
-          // Check the integrity of the restored file
-          console.log(`Restoration complete. Checking integrity of the new file...`);
-          isDatabaseClean = await checkDatabaseIntegrity(DB_FILE_PATH);
-          
-          if (isDatabaseClean) {
-              console.log(" Database successfully recovered and integrity check passed.");
-              break; // Exit the loop
-          }
-      } else if (attempt === 1) {
-          // No backups found, proceed to connection which will create a new DB
-          console.error("No valid backups found. A new database file will be created on connection.");
-          break; 
-      }
+  const LOG_DIR_PATH = path.join(targetPath, "logs");
+  const DB_FILE_PATH = path.join(targetPath, "database.db");
+  const UPLOADS_DIR_PATH = path.join(targetPath, "uploads");
+  const CLIENT_BUILD_PATH = path.join(__dirname, "..", "client", "dist");
 
-      attempt++;
-  }
-  
-  if (!isDatabaseClean && attempt > maxRestoreAttempts) {
-      // If we failed after all attempts (the backup itself was corrupt)
-      console.error("CRITICAL ERROR: Database and all backups appear corrupt or unusable. HALTING SERVER STARTUP.");
-      return; // Halt server initialization
+  // Load final config from the target path
+  const finalConfig = { ...config };
+  app.set("config", finalConfig);
+
+  logger = createLogger(LOG_DIR_PATH);
+  app.set("logger", logger);
+
+  // DB Integrity Check
+  let isDatabaseClean = await checkDatabaseIntegrity(DB_FILE_PATH, logger);
+  if (!isDatabaseClean && fs.existsSync(DB_FILE_PATH)) {
+    restoreFromBackup(targetPath, logger);
+    isDatabaseClean = await checkDatabaseIntegrity(DB_FILE_PATH, logger);
   }
 
-  // Set up multer for file uploads
-  const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-      cb(null, UPLOADS_DIR_PATH);
-    },
-    filename: function (req, file, cb) {
-      cb(
-        null,
-        file.fieldname + "-" + Date.now() + path.extname(file.originalname)
-      );
-    },
-  }); // Store the initialized multer instance
+  return new Promise((resolve, reject) => {
+    const db = new sqlite3.Database(DB_FILE_PATH, (err) => {
+      if (err) return reject(err);
 
-  upload = multer({
-    storage: storage,
-    limits: { fileSize: 20 * 1024 * 1024 },
-    fileFilter: (req, file, cb) => {
-      if (["image/jpeg", "image/png", "image/gif"].includes(file.mimetype)) {
-        cb(null, true);
-      } else {
-        cb(
-          new Error("Invalid file type, only JPEG, PNG, or GIF is allowed!"),
-          false
-        );
-      }
-    },
-  }); // Connect to SQLite database
+      updateStatus("db_ready", true);
+      createBackup(DB_FILE_PATH, targetPath, logger);
 
-  db = new sqlite3.Database(DB_FILE_PATH, (err) => {
-    if (err) {
-      return console.error("Database connection error (Fatal):", err.message);
-    }
-    console.log("Connected to the database at:", DB_FILE_PATH);
-    
-    // 🔑 AUTOMATED BACKUP LOGIC (STEP 2: CREATE DAILY BACKUP)
-    createBackup(DB_FILE_PATH, userDataPath)
+      db.serialize(() => {
+        db.run(visitorsSql);
+        db.run(visitsSql);
+        db.run(dependentsSql);
+        db.run(auditLogsSql, (err) => {
+          if (err) return reject(err);
 
-    db.serialize(() => {
-      // Create all tables
-      db.run(visitorsSql, (err) => {
-        if (err)
-          return console.error("Visitors Table Error (Fatal):", err.message);
-        db.run(visitsSql, (err) => {
-          if (err)
-            return console.error("Visits Table Error (Fatal):", err.message);
-          db.run(dependentsSql, (err) => {
-            if (err)
-              return console.error(
-                "Dependents Table Error (Fatal):",
-                err.message
-              );
-            db.run(auditLogsSql, (err) => {
-              if (err)
-                return console.error(
-                  "Audit Logs Table Error (Fatal):",
-                  err.message
-                ); // Running cleanup job.
-              runDataComplianceCleanup(db);
-            });
+          runDataComplianceCleanup(db, logger);
+
+          const storage = multer.diskStorage({
+            destination: (req, file, cb) => cb(null, UPLOADS_DIR_PATH),
+            filename: (req, file, cb) =>
+              cb(
+                null,
+                `${file.fieldname}-${Date.now()}${path.extname(
+                  file.originalname
+                )}`
+              ),
           });
+          const upload = multer({ storage });
+
+          attachRoutes(db, upload, targetPath, CLIENT_BUILD_PATH, finalConfig);
+          resolve(finalConfig);
         });
       });
     });
   });
 };
-// --- END INITIALIZATION FUNCTION ---
 
-// CALL THE INITIALIZATION FUNCTION
-initializeServer();
+/**
+ * 6. ROUTE ATTACHMENT
+ */
+function attachRoutes(db, upload, targetPath, CLIENT_BUILD_PATH, config) {
+  app.use("/", express.static(targetPath));
+  app.use(cors());
+  app.use(bodyParser.json());
+  app.use(bodyParser.urlencoded({ extended: true }));
 
-// --- Express Middleware and Routing ---
+  // --- FRONTEND LOG BRIDGE ---
+  app.post("/api/logs/log-error", (req, res) => {
+    const { error, info, type } = req.body;
+    const currentLogger = app.get("logger") || console;
+    const shortStack = error?.stack 
+        ? error.stack.split('\n').slice(0, 3).join(' | ') 
+        : "No stack";
+    currentLogger.error(`${type} | ${error?.message} | ${shortStack}`);
+    res.status(200).json({ status: "logged" });
+  });
 
-// Middleware setup
-app.use(cors());
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
+  app.use("/uploads", express.static(path.join(targetPath, "uploads")));
+  app.use(express.static(CLIENT_BUILD_PATH));
 
-// Router usage (db and upload are now correctly initialized global variables)
-app.use("/", createRegistrationRouter(db, upload));
-app.use("/", createVisitorsRouter(db));
-app.use("/", createLoginRouter(db));
-app.use("/", createUpdateVisitorRouter(db));
-app.use("/", createLogoutRouter(db));
-app.use("/", createBanVisitorRouter(db));
-app.use("/", createUnbanVisitorRouter(db));
-app.use("/", createSearchVisitorsRouter(db));
-app.use("/", createMissedVisitRouter(db));
-app.use("/", createHistoryRouter(db));
+  // API Routes
+  app.use("/", createRegistrationRouter(db, upload, logger));
+  app.use("/", createVisitorsRouter(db, logger));
+  app.use("/", createLoginRouter(db, logger));
+  app.use("/", createUpdateVisitorRouter(db, logger));
+  app.use("/", createLogoutRouter(db, logger));
+  app.use("/", createBanVisitorRouter(db, logger));
+  app.use("/", createUnbanVisitorRouter(db, logger, config.ADMIN_PASSWORD_2));
+  app.use("/", createSearchVisitorsRouter(db, logger));
+  app.use("/", createMissedVisitRouter(db, logger));
+  app.use("/", createHistoryRouter(db, logger, config.ADMIN_PASSWORD_1));
+  app.use("/api/audit", createAuditLogsRouter(db, logger));
 
-app.use("/uploads", (req, res, next) => {
-    const extension = path.extname(req.url).toLowerCase();
-    
-    // Set appropriate MIME types for common image files
-    switch (extension) {
-        case '.png':
-            res.setHeader('Content-Type', 'image/png');
-            break;
-        case '.jpg':
-        case '.jpeg':
-            res.setHeader('Content-Type', 'image/jpeg');
-            break;
-        case '.gif':
-            res.setHeader('Content-Type', 'image/gif');
-            break;
-        default:
-            // Let the static handler handle other files or fail if it's not an image
-            break;
+  if (config.SENTRY_DSN) Sentry.setupExpressErrorHandler(app);
+
+  app.get("/api/status", (req, res) => res.json(getStatus()));
+
+  // SPA Catch-all
+  app.get("*", (req, res) => {
+    if (!req.url.startsWith("/api/")) {
+      const idx = path.join(CLIENT_BUILD_PATH, "index.html");
+      if (fs.existsSync(idx)) res.sendFile(idx);
+      else res.status(404).send("Frontend build not found.");
     }
-    next();
-});
-// Register static middleware  AFTER UPLOADS_DIR_PATH is set
-app.use("/uploads", express.static(path.resolve(UPLOADS_DIR_PATH)));
+  });
 
-// Serve the static files from the build path (e.g., JS, CSS)
-app.use(express.static(CLIENT_BUILD_PATH));
+  logger.info("✅ Server logic initialized and routes attached.");
+}
 
-app.get("*", (req, res, next) => {
-  // Excluding API routes from this catch-all
-  if (req.url.startsWith("/api/")) {
-    return next();
-  }
-  res.sendFile(path.join(CLIENT_BUILD_PATH));
-});
-
-module.exports = app;
+module.exports = { app, initializeServer };
