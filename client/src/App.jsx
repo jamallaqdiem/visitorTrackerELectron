@@ -26,6 +26,8 @@ const initialRegistrationForm = {
   photo: null,
 };
 
+window.API_BASE_URL = window.API_BASE_URL || "http://localhost:3001";
+
 function App() {
   
   // --- Global State & Loading ---
@@ -95,31 +97,22 @@ function App() {
 const [isReady, setIsReady] = useState(false);
 
 useEffect(() => {
-  const detectPort = async () => {
-    if (window.apiConfig && window.apiConfig.getPort) {
-      try {
-        const port = await window.apiConfig.getPort();
-        window.API_BASE_URL = `http://localhost:${port}`;
-        
-        // Small delay to ensure the Node.js server 
-
-        setTimeout(() => {
+    const detectPort = async () => {
+      if (window.apiConfig?.getPort) {
+        try {
+          const port = await window.apiConfig.getPort();
+          window.API_BASE_URL = `http://localhost:${port}`;
+          console.log("Port Detected:", port);
           setIsReady(true);
-        }, 500); 
-
-      } catch (err) {
-        console.error("Failed to get port:", err);
-        window.API_BASE_URL = "http://localhost:3001";
+        } catch (err) {
+          setIsReady(true); // Fallback to 3001 already set above
+        }
+      } else {
         setIsReady(true);
       }
-    } else {
-      window.API_BASE_URL = "http://localhost:3001";
-      setIsReady(true);
-    }
-  };
-
-  detectPort();
-}, []);
+    };
+    detectPort();
+  }, []);
  
 
   // Helper function for showing a transient message
@@ -1038,7 +1031,7 @@ const executeApiLogout = async (id) => {
       {/* Header */}
        <div className="flex flex-col items-center w-full mb-8 relative">
           <img
-            src="Salvation-Army-logo.png"
+            src="./Salvation-Army-logo.png"
             alt="The Salvation Army Red Shield Logo"
             className="absolute left-0 top-0 w-28 h-28 object-contain print-show-logo"
             // Fallback in case the image path is broken

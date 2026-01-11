@@ -133,7 +133,11 @@ const initializeServer = async (passedPath) => {
   const LOG_DIR_PATH = path.join(targetPath, "logs");
   const DB_FILE_PATH = path.join(targetPath, "database.db");
   const UPLOADS_DIR_PATH = path.join(targetPath, "uploads");
-  const CLIENT_BUILD_PATH = path.join(__dirname, "..", "client", "dist");
+  let CLIENT_BUILD_PATH = path.join(__dirname, "..", "client", "dist");
+  // Fallback if the folder is flat inside the production app
+if (!fs.existsSync(CLIENT_BUILD_PATH)) {
+  CLIENT_BUILD_PATH = path.join(__dirname, "client", "dist");
+}
 
   // Load final config from the target path
   const finalConfig = { ...config };
@@ -190,7 +194,11 @@ const initializeServer = async (passedPath) => {
  */
 function attachRoutes(db, upload, targetPath, CLIENT_BUILD_PATH, config) {
   app.use("/", express.static(targetPath));
-  app.use(cors());
+  app.use(cors({
+  origin: '*', // Allows the 'file://' frontend to talk to the 'http://' backend
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
   app.use(bodyParser.json());
   app.use(bodyParser.urlencoded({ extended: true }));
 
@@ -226,7 +234,7 @@ function attachRoutes(db, upload, targetPath, CLIENT_BUILD_PATH, config) {
   app.get("/api/status", (req, res) => res.json(getStatus()));
 
   // SPA Catch-all
-  app.get("*", (req, res) => {
+  app.get("*splat", (req, res) => {
     if (!req.url.startsWith("/api/")) {
       const idx = path.join(CLIENT_BUILD_PATH, "index.html");
       if (fs.existsSync(idx)) res.sendFile(idx);

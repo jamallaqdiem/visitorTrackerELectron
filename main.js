@@ -1,4 +1,11 @@
-const { app, BrowserWindow, ipcMain, dialog, Menu, shell } = require("electron");
+const {
+  app,
+  BrowserWindow,
+  ipcMain,
+  dialog,
+  Menu,
+  shell,
+} = require("electron");
 const createLogger = require("./server/logger");
 const path = require("path");
 const fs = require("fs");
@@ -6,6 +13,7 @@ const Sentry = require("@sentry/electron/main");
 const { startServer } = require("./server/startServer");
 
 let mainWindow;
+let f12Timer; // A variable to hold   for DevTools
 const userDataPath = app.getPath("userData");
 
 // 1. Ensure the directory exists immediately
@@ -43,13 +51,13 @@ ipcMain.on("generate-pdf", async (event) => {
 
     const options = {
       marginsType: 0, // No margins for full Tailwind design coverage
-      pageSize: 'A4',
+      pageSize: "A4",
       printBackground: true, // Captures colors and table styling
       landscape: true, // Horizontal layout is better for wide visitor tables
     };
 
     const data = await mainWindow.webContents.printToPDF(options);
-    
+
     fs.writeFile(pdfPath, data, (error) => {
       if (error) {
         console.error("PDF Save Error:", error);
@@ -69,7 +77,7 @@ const createWindow = async () => {
   if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
 
   const logger = createLogger(logDir);
-  Menu.setApplicationMenu(null); // Keep UI clean for the Salvation Army
+  Menu.setApplicationMenu(null); // Keep UI clean
 
   try {
     logger.info("[Main Process] Starting backend server...");
@@ -90,13 +98,32 @@ const createWindow = async () => {
       },
     });
 
+    // Hidden Debugging Tools for Production
+ mainWindow.webContents.on("before-input-event", (event, input) => {
+  if (input.key === "F12") {
+    if (input.type === "keyDown") {
+      // If  just pressed , start a timer for 3 seconds
+      if (!f12Timer) {
+        f12Timer = setTimeout(() => {
+          mainWindow.webContents.toggleDevTools();
+          console.log("Secret DevTools activated via Long Press!");
+        }, 3000); 
+      }
+    } else if (input.type === "keyUp") {
+      // If  let go before 3 seconds, cancel the timer!
+      clearTimeout(f12Timer);
+      f12Timer = null;
+    }
+  }
+});
+
     const isDev = !app.isPackaged;
 
     if (isDev) {
       mainWindow.loadURL("http://localhost:5173");
     } else {
       // Robust pathing for the production .EXE
-      const indexPath = path.join(__dirname, "dist", "index.html");
+      const indexPath = path.join(__dirname, "client", "dist", "index.html");
       if (fs.existsSync(indexPath)) {
         mainWindow.loadFile(indexPath);
       } else {
@@ -104,7 +131,7 @@ const createWindow = async () => {
         mainWindow.loadFile(path.join(__dirname, "../dist/index.html"));
       }
     }
-
+    // Clean the RAM
     mainWindow.on("closed", () => {
       mainWindow = null;
     });

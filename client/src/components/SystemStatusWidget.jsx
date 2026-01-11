@@ -18,24 +18,18 @@ const SystemStatusWidget = () => {
   // 1. DYNAMIC FETCH LOGIC
   const fetchStatus = useCallback(async () => {
     try {
+      const baseUrl = window.API_BASE_URL || "http://localhost:3001";
       // Use  universal logic
-      const API_BASE_URL =
-        window.location.port === "5173"
-          ? "http://localhost:3001"
-          : window.location.origin;
-
-      const response = await fetch(`${API_BASE_URL}/api/status`);
-      if (!response.ok) throw new Error("Backend Offline");
-      const data = await response.json();
-      setStatus(data);
-    } catch (error) {
-      console.error("Status check failed:", error);
-      setStatus({
-        db_ready: false,
-        last_error: "Connection to local server failed.",
-      });
-    }
-  }, []);
+    const response = await fetch(`${baseUrl}/api/status`);
+    if (!response.ok) throw new Error("Backend Offline");
+    
+    const data = await response.json();
+    setStatus(data);
+  } catch (err) {
+    console.error("Widget Fetch Error:", err);
+    setStatus({ db_ready: false, last_error: "Connection to local server failed." });
+  }
+}, []);
 
   useEffect(() => {
     fetchStatus();

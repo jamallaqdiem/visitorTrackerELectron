@@ -19,6 +19,12 @@
   "build": {
     "appId": "com.salvationarmy.visitortracker",
     "productName": "VisitorTracker",
+"files": [
+      "**/*",
+      "!client/*",
+      "client/dist/**/*",
+      "!dist/*"
+    ],
     "directories": {
       "output": "dist"
     },
@@ -55,6 +61,11 @@
   },
   "dependencies": {
     "@sentry/electron": "^7.5.0",
-    "winston": "^3.19.0"
+    "cors": "^2.8.5",
+    "express": "^5.2.1",
+    "multer": "^2.0.2",
+    "sqlite3": "^5.1.7",
+    "winston": "^3.19.0",
+    "winston-daily-rotate-file": "^5.0.0"
   }
 }

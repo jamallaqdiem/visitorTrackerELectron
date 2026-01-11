@@ -1,4 +1,4 @@
-import React from 'react';
+
 
 /**
  * Modal for staff to input a historical entry time for a missed visitor.
